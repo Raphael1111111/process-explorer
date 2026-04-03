@@ -5,6 +5,16 @@ import { componentTagger } from "lovable-tagger";
 
 export default defineConfig(({ mode }) => ({
   base: "/",
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        questionnaire: path.resolve(__dirname, "questionnaire/index.html"),
+        builder: path.resolve(__dirname, "builder/index.html"),
+        success: path.resolve(__dirname, "success/index.html"),
+      },
+    },
+  },
   server: {
     host: "::",
     port: 8080,
