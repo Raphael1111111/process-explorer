@@ -1,12 +1,12 @@
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { ProcessNodeData, NODE_TYPE_CONFIG } from '@/types/process';
+import { type ProcessNodeData, NODE_TYPE_CONFIG, type NodeType } from '@/types/process';
 import { cn } from '@/lib/utils';
 
 const ProcessNode = memo(({ data, selected }: NodeProps) => {
-  const nodeData = data as unknown as ProcessNodeData & { isAiView?: boolean };
-  const config = NODE_TYPE_CONFIG[data.nodeType];
-  const isAiExpanded = data.nodeType === 'ai' && data.isAiView;
+  const d = data as ProcessNodeData & { isAiView?: boolean };
+  const config = NODE_TYPE_CONFIG[d.nodeType as NodeType];
+  const isAiExpanded = d.nodeType === 'ai' && d.isAiView;
 
   return (
     <div
@@ -15,14 +15,9 @@ const ProcessNode = memo(({ data, selected }: NodeProps) => {
         config.bgClass,
         config.borderClass,
         selected && 'ring-2 ring-primary/30 shadow-md',
-        data.nodeType === 'decision' && 'rotate-0',
       )}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!border-border"
-      />
+      <Handle type="target" position={Position.Left} className="!border-border" />
 
       <div className="flex items-center gap-2 mb-1">
         <span className="text-base">{config.emoji}</span>
@@ -32,67 +27,63 @@ const ProcessNode = memo(({ data, selected }: NodeProps) => {
       </div>
 
       <p className="text-base font-semibold text-foreground leading-snug">
-        {data.label}
+        {String(d.label || '')}
       </p>
 
-      {data.description && !isAiExpanded && (
+      {d.description && !isAiExpanded && (
         <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-          {data.description}
+          {String(d.description)}
         </p>
       )}
 
       {isAiExpanded && (
         <div className="mt-3 space-y-2 text-sm border-t border-node-ai/20 pt-3 animate-fade-in">
-          {data.aiTask && (
+          {d.aiTask && (
             <div>
               <span className="font-medium text-node-ai">Aufgabe:</span>
-              <span className="text-muted-foreground ml-1">{data.aiTask}</span>
+              <span className="text-muted-foreground ml-1">{String(d.aiTask)}</span>
             </div>
           )}
-          {data.aiInput && (
+          {d.aiInput && (
             <div>
               <span className="font-medium text-node-ai">Input:</span>
-              <span className="text-muted-foreground ml-1">{data.aiInput}</span>
+              <span className="text-muted-foreground ml-1">{String(d.aiInput)}</span>
             </div>
           )}
-          {data.aiOutput && (
+          {d.aiOutput && (
             <div>
               <span className="font-medium text-node-ai">Output:</span>
-              <span className="text-muted-foreground ml-1">{data.aiOutput}</span>
+              <span className="text-muted-foreground ml-1">{String(d.aiOutput)}</span>
             </div>
           )}
-          {data.involvedSystems && (
+          {d.involvedSystems && (
             <div>
               <span className="font-medium text-node-ai">Systeme:</span>
-              <span className="text-muted-foreground ml-1">{data.involvedSystems}</span>
+              <span className="text-muted-foreground ml-1">{String(d.involvedSystems)}</span>
             </div>
           )}
-          {data.needsHumanApproval && (
+          {d.needsHumanApproval && (
             <div className="flex items-center gap-1 text-node-bottleneck">
               <span>👤</span>
               <span className="font-medium">Menschliche Freigabe nötig</span>
             </div>
           )}
-          {data.checkpoint && (
+          {d.checkpoint && (
             <div className="flex items-center gap-1 text-node-decision">
               <span>✓</span>
               <span className="font-medium">Prüfpunkt</span>
             </div>
           )}
-          {data.handoverTo && (
+          {d.handoverTo && (
             <div>
               <span className="font-medium text-node-ai">Übergabe an:</span>
-              <span className="text-muted-foreground ml-1">{data.handoverTo}</span>
+              <span className="text-muted-foreground ml-1">{String(d.handoverTo)}</span>
             </div>
           )}
         </div>
       )}
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!border-border"
-      />
+      <Handle type="source" position={Position.Right} className="!border-border" />
     </div>
   );
 });
