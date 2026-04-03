@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, "index.html"),
+        buzzfree: path.resolve(__dirname, "buzzfree/index.html"),
         questionnaire: path.resolve(__dirname, "questionnaire/index.html"),
         builder: path.resolve(__dirname, "builder/index.html"),
         success: path.resolve(__dirname, "success/index.html"),
