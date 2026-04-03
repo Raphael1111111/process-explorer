@@ -35,6 +35,20 @@
       content="Prozesse aufnehmen, KI-Potenziale markieren und beide Abläufe klar vergleichen."
     />
     <meta name="twitter:image" content="/social-preview.svg" />
+
+    <script>
+      (function () {
+        const redirectPath = sessionStorage.getItem("spa-redirect-path");
+
+        if (!redirectPath) return;
+
+        sessionStorage.removeItem("spa-redirect-path");
+
+        if (redirectPath !== window.location.pathname + window.location.search + window.location.hash) {
+          window.history.replaceState(null, "", redirectPath);
+        }
+      })();
+    </script>
   </head>
 
   <body>
