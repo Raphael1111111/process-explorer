@@ -1,92 +1,93 @@
-import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { type ProcessNodeData, NODE_TYPE_CONFIG, type NodeType } from '@/types/process';
-import { cn } from '@/lib/utils';
+import { memo } from "react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
+
+import {
+  FUTURE_MODE_CONFIG,
+  NODE_TYPE_CONFIG,
+  type CanvasView,
+  type FutureMode,
+  type NodeType,
+  type ProcessNodeData,
+} from "@/types/process";
+import { cn } from "@/lib/utils";
+
+type ViewNodeData = ProcessNodeData & {
+  viewMode?: CanvasView;
+};
 
 const ProcessNode = memo(({ data, selected }: NodeProps) => {
-  const d = data as ProcessNodeData & { isAiView?: boolean };
-  const config = NODE_TYPE_CONFIG[d.nodeType as NodeType];
-  const isAiExpanded = d.nodeType === 'ai' && d.isAiView;
+  const nodeData = data as ViewNodeData;
+  const config = NODE_TYPE_CONFIG[nodeData.nodeType as NodeType];
+  const viewMode = nodeData.viewMode ?? "current";
+  const futureMode = (nodeData.futureMode ?? "same") as FutureMode;
+  const futureConfig = FUTURE_MODE_CONFIG[futureMode];
+  const isFutureView = viewMode === "future";
+  const isChanged = futureMode !== "same";
+
+  const title = isFutureView && isChanged ? nodeData.futureLabel || nodeData.label : nodeData.label;
+
+  const currentMeta =
+    nodeData.nodeType === "process"
+      ? [nodeData.responsible, nodeData.duration].filter(Boolean).join(" • ")
+      : nodeData.nodeType === "decision"
+        ? nodeData.options
+        : nodeData.nodeType === "bottleneck"
+          ? nodeData.impact || nodeData.frequency || nodeData.problem
+          : nodeData.systemType || nodeData.connectedTo;
+
+  const futureMeta = isChanged
+    ? nodeData.reviewCheckpoint
+      ? "Freigabe bleibt"
+      : nodeData.aiTask || "Mit KI geändert"
+    : currentMeta;
 
   return (
     <div
       className={cn(
-        'rounded-xl border-2 px-5 py-3 shadow-sm transition-all min-w-[180px] max-w-[280px]',
-        config.bgClass,
+        "relative min-w-[180px] max-w-[220px] rounded-[18px] border bg-white px-4 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.06)] transition-all",
         config.borderClass,
-        selected && 'ring-2 ring-primary/30 shadow-md',
+        config.bgClass,
+        isFutureView && isChanged && "border-node-ai/35 bg-white shadow-[0_10px_26px_rgba(109,40,217,0.08)]",
+        selected && "ring-2 ring-primary/20 shadow-[0_12px_30px_rgba(37,99,235,0.12)]",
+        nodeData.isFresh && "process-node-fresh",
       )}
     >
-      <Handle type="target" position={Position.Left} className="!border-border" />
+      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-border !bg-white" />
 
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-base">{config.emoji}</span>
-        <span className={cn('text-xs font-medium uppercase tracking-wide', config.colorClass)}>
-          {config.label}
-        </span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <span className={cn("text-xs font-semibold", config.colorClass)}>{config.emoji}</span>
+            <span className={cn("text-[10px] font-semibold uppercase tracking-[0.18em]", config.colorClass)}>
+              {config.label}
+            </span>
+          </div>
+          <p className="text-sm font-semibold leading-5 text-foreground">{String(title || "")}</p>
+        </div>
+
+        {isFutureView && (
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-2 py-1 text-[10px] font-medium",
+              futureConfig.badgeClass,
+            )}
+          >
+            {futureConfig.shortLabel}
+          </span>
+        )}
       </div>
 
-      <p className="text-base font-semibold text-foreground leading-snug">
-        {String(d.label || '')}
-      </p>
-
-      {d.description && !isAiExpanded && (
-        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-          {String(d.description)}
-        </p>
-      )}
-
-      {isAiExpanded && (
-        <div className="mt-3 space-y-2 text-sm border-t border-node-ai/20 pt-3 animate-fade-in">
-          {d.aiTask && (
-            <div>
-              <span className="font-medium text-node-ai">Aufgabe:</span>
-              <span className="text-muted-foreground ml-1">{String(d.aiTask)}</span>
-            </div>
-          )}
-          {d.aiInput && (
-            <div>
-              <span className="font-medium text-node-ai">Input:</span>
-              <span className="text-muted-foreground ml-1">{String(d.aiInput)}</span>
-            </div>
-          )}
-          {d.aiOutput && (
-            <div>
-              <span className="font-medium text-node-ai">Output:</span>
-              <span className="text-muted-foreground ml-1">{String(d.aiOutput)}</span>
-            </div>
-          )}
-          {d.involvedSystems && (
-            <div>
-              <span className="font-medium text-node-ai">Systeme:</span>
-              <span className="text-muted-foreground ml-1">{String(d.involvedSystems)}</span>
-            </div>
-          )}
-          {d.needsHumanApproval && (
-            <div className="flex items-center gap-1 text-node-bottleneck">
-              <span>👤</span>
-              <span className="font-medium">Menschliche Freigabe nötig</span>
-            </div>
-          )}
-          {d.checkpoint && (
-            <div className="flex items-center gap-1 text-node-decision">
-              <span>✓</span>
-              <span className="font-medium">Prüfpunkt</span>
-            </div>
-          )}
-          {d.handoverTo && (
-            <div>
-              <span className="font-medium text-node-ai">Übergabe an:</span>
-              <span className="text-muted-foreground ml-1">{String(d.handoverTo)}</span>
-            </div>
-          )}
+      {((!isFutureView && currentMeta) || (isFutureView && futureMeta)) && (
+        <div className="mt-2 rounded-full bg-white/80 px-2.5 py-1 text-[11px] leading-4 text-muted-foreground">
+          {String(isFutureView ? futureMeta : currentMeta)}
         </div>
       )}
 
-      <Handle type="source" position={Position.Right} className="!border-border" />
+      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-border !bg-white" />
     </div>
   );
 });
 
-ProcessNode.displayName = 'ProcessNode';
+ProcessNode.displayName = "ProcessNode";
+
 export default ProcessNode;
