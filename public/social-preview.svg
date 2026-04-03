@@ -1,0 +1,28 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#F8FAFC"/>
+  <rect x="70" y="70" width="1060" height="490" rx="36" fill="white" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="110" y="118" width="118" height="90" rx="24" fill="#2563EB"/>
+  <rect x="270" y="132" width="230" height="18" rx="9" fill="#0F172A"/>
+  <rect x="270" y="168" width="370" height="14" rx="7" fill="#94A3B8"/>
+  <rect x="110" y="282" width="180" height="110" rx="28" fill="#EFF6FF" stroke="#BFDBFE"/>
+  <rect x="360" y="282" width="180" height="110" rx="28" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <rect x="610" y="282" width="180" height="110" rx="28" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <rect x="860" y="282" width="180" height="110" rx="28" fill="#F5F3FF" stroke="#DDD6FE"/>
+  <path d="M290 337H360" stroke="#94A3B8" stroke-width="6" stroke-linecap="round"/>
+  <path d="M540 337H610" stroke="#94A3B8" stroke-width="6" stroke-linecap="round"/>
+  <path d="M790 337H860" stroke="#94A3B8" stroke-width="6" stroke-linecap="round"/>
+  <rect x="134" y="308" width="92" height="14" rx="7" fill="#2563EB"/>
+  <rect x="134" y="334" width="120" height="12" rx="6" fill="#94A3B8"/>
+  <rect x="384" y="308" width="92" height="14" rx="7" fill="#0F172A" fill-opacity="0.8"/>
+  <rect x="384" y="334" width="120" height="12" rx="6" fill="#94A3B8"/>
+  <rect x="634" y="308" width="92" height="14" rx="7" fill="#0F172A" fill-opacity="0.8"/>
+  <rect x="634" y="334" width="120" height="12" rx="6" fill="#94A3B8"/>
+  <rect x="884" y="308" width="92" height="14" rx="7" fill="#7C3AED"/>
+  <rect x="884" y="334" width="120" height="12" rx="6" fill="#94A3B8"/>
+  <text x="110" y="465" fill="#0F172A" font-family="Segoe UI, Arial, sans-serif" font-size="56" font-weight="700">
+    Workflow Builder für KI-Prozesse
+  </text>
+  <text x="110" y="515" fill="#475569" font-family="Segoe UI, Arial, sans-serif" font-size="28">
+    Prozesse aufnehmen. KI-Änderungen markieren. Vorher und Nachher klar vergleichen.
+  </text>
+</svg>
