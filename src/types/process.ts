@@ -1,6 +1,7 @@
 export type NodeType = 'process' | 'decision' | 'bottleneck' | 'ai' | 'system';
 
 export interface ProcessNodeData {
+  [key: string]: unknown;
   label: string;
   nodeType: NodeType;
   description?: string;

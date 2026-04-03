@@ -3,11 +3,8 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { ProcessNodeData, NODE_TYPE_CONFIG } from '@/types/process';
 import { cn } from '@/lib/utils';
 
-interface ProcessNodeProps extends NodeProps {
-  data: ProcessNodeData & { isAiView?: boolean };
-}
-
-const ProcessNode = memo(({ data, selected }: ProcessNodeProps) => {
+const ProcessNode = memo(({ data, selected }: NodeProps) => {
+  const nodeData = data as unknown as ProcessNodeData & { isAiView?: boolean };
   const config = NODE_TYPE_CONFIG[data.nodeType];
   const isAiExpanded = data.nodeType === 'ai' && data.isAiView;
 
