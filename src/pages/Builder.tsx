@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Edge, Node } from "@xyflow/react";
@@ -9,70 +9,95 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PROCESS_TEMPLATES, type ProcessTemplate } from "@/data/processTemplates";
-import type { ProcessNodeData } from "@/types/process";
+import {
+  clearWorkflow,
+  loadWorkflow,
+  type StoredWorkflow,
+} from "@/hooks/useWorkflowStorage";
+import type { ProcessNodeData, WorkflowPhase } from "@/types/process";
 
 const cloneNodes = (nodes: Node[]) =>
-  nodes.map((node) => ({
-    ...node,
-    position: { ...node.position },
-    data: { ...(node.data as ProcessNodeData) },
+  nodes.map((n) => ({
+    ...n,
+    position: { ...n.position },
+    data: { ...(n.data as ProcessNodeData) },
   }));
 
-const cloneEdges = (edges: Edge[]) =>
-  edges.map((edge) => ({
-    ...edge,
-  }));
+const cloneEdges = (edges: Edge[]) => edges.map((e) => ({ ...e }));
 
 const cloneTemplate = (template: ProcessTemplate) => ({
   processName: template.processName,
   nodes: cloneNodes(template.nodes),
   edges: cloneEdges(template.edges),
+  phase: "draft" as WorkflowPhase,
 });
+
+interface CanvasProps {
+  processName: string;
+  nodes: Node[];
+  edges: Edge[];
+  phase: WorkflowPhase;
+}
 
 const Builder = () => {
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [hasAccess, setHasAccess] = useState(false);
-  const [canvasProps, setCanvasProps] = useState<{
-    processName: string;
-    nodes: Node[];
-    edges: Edge[];
-  } | null>(null);
+  const [canvasProps, setCanvasProps] = useState<CanvasProps | null>(null);
+  const [storedWorkflow, setStoredWorkflow] = useState<StoredWorkflow | null>(null);
+
+  useEffect(() => {
+    if (hasAccess && !canvasProps) {
+      setStoredWorkflow(loadWorkflow());
+    }
+  }, [hasAccess, canvasProps]);
 
   const handlePasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
     if (password.trim().toLowerCase() === "workflow") {
       setHasAccess(true);
       setPasswordError("");
       return;
     }
-
     setPasswordError("Das Passwort ist nicht korrekt.");
   };
 
   const handleStart = (processName: string, firstStep: string) => {
+    clearWorkflow();
     const firstNode: Node = {
       id: "node-1",
       type: "processNode",
-      position: { x: 250, y: 250 },
+      position: { x: 80, y: 80 },
       data: {
         label: firstStep,
         nodeType: "process",
         futureMode: "same",
       } as ProcessNodeData,
     };
-
-    setCanvasProps({ processName, nodes: [firstNode], edges: [] });
+    setCanvasProps({
+      processName,
+      nodes: [firstNode],
+      edges: [],
+      phase: "draft",
+    });
   };
 
   const handleLoadTemplate = (templateId: string) => {
     const template = PROCESS_TEMPLATES.find((entry) => entry.id === templateId);
-
     if (!template) return;
-
+    clearWorkflow();
     setCanvasProps(cloneTemplate(template));
+  };
+
+  const handleResume = () => {
+    if (!storedWorkflow) return;
+    setCanvasProps({
+      processName: storedWorkflow.processName,
+      nodes: cloneNodes(storedWorkflow.nodes),
+      edges: cloneEdges(storedWorkflow.edges),
+      phase: storedWorkflow.phase,
+    });
   };
 
   if (!hasAccess) {
@@ -118,9 +143,7 @@ const Builder = () => {
                       value={password}
                       onChange={(event) => {
                         setPassword(event.target.value);
-                        if (passwordError) {
-                          setPasswordError("");
-                        }
+                        if (passwordError) setPasswordError("");
                       }}
                       className="h-14 rounded-2xl border-border/80 px-5 text-lg"
                       placeholder="Passwort eingeben"
@@ -151,8 +174,10 @@ const Builder = () => {
     return (
       <Onboarding
         templates={PROCESS_TEMPLATES}
+        storedWorkflow={storedWorkflow}
         onComplete={handleStart}
         onLoadTemplate={handleLoadTemplate}
+        onResume={handleResume}
         onBack={() => navigate("/")}
       />
     );
@@ -163,6 +188,7 @@ const Builder = () => {
       initialProcessName={canvasProps.processName}
       initialNodes={canvasProps.nodes}
       initialEdges={canvasProps.edges}
+      initialPhase={canvasProps.phase}
     />
   );
 };

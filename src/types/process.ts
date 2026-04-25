@@ -1,6 +1,8 @@
-export type NodeType = "process" | "decision" | "bottleneck" | "system";
+export type NodeType = "process" | "decision";
 
 export type FutureMode = "same" | "assist" | "replace";
+
+export type WorkflowPhase = "draft" | "refine" | "ai" | "compare";
 
 export type CanvasView = "current" | "future";
 
@@ -12,20 +14,12 @@ export interface ProcessNodeData {
   description?: string;
   duration?: string;
   responsible?: string;
-  question?: string;
-  options?: string;
-  problem?: string;
-  frequency?: string;
-  impact?: string;
-  systemType?: string;
-  connectedTo?: string;
+  tools?: string[];
+  isBottleneck?: boolean;
+  bottleneckReason?: string;
   futureMode?: FutureMode;
   futureLabel?: string;
-  futureDescription?: string;
   aiTask?: string;
-  aiInput?: string;
-  aiOutput?: string;
-  techDetails?: string;
   humanRole?: string;
   reviewCheckpoint?: boolean;
 }
@@ -36,42 +30,32 @@ export const NODE_TYPE_CONFIG: Record<
     label: string;
     shortLabel: string;
     emoji: string;
+    description: string;
     colorClass: string;
     bgClass: string;
     borderClass: string;
+    accentVar: string;
   }
 > = {
   process: {
     label: "Schritt",
     shortLabel: "Schritt",
     emoji: "●",
+    description: "Etwas wird getan.",
     colorClass: "text-node-process",
     bgClass: "bg-node-process-bg",
-    borderClass: "border-node-process/30",
+    borderClass: "border-node-process/40",
+    accentVar: "var(--node-process)",
   },
   decision: {
     label: "Frage",
     shortLabel: "Frage",
     emoji: "◆",
+    description: "Es wird entschieden.",
     colorClass: "text-node-decision",
     bgClass: "bg-node-decision-bg",
-    borderClass: "border-node-decision/30",
-  },
-  bottleneck: {
-    label: "Problem",
-    shortLabel: "Problem",
-    emoji: "▲",
-    colorClass: "text-node-bottleneck",
-    bgClass: "bg-node-bottleneck-bg",
-    borderClass: "border-node-bottleneck/30",
-  },
-  system: {
-    label: "System",
-    shortLabel: "System",
-    emoji: "◌",
-    colorClass: "text-node-system",
-    bgClass: "bg-node-system-bg",
-    borderClass: "border-node-system/30",
+    borderClass: "border-node-decision/40",
+    accentVar: "var(--node-decision)",
   },
 };
 
@@ -82,58 +66,84 @@ export const FUTURE_MODE_CONFIG: Record<
     shortLabel: string;
     description: string;
     badgeClass: string;
+    cardClass: string;
   }
 > = {
   same: {
-    label: "Bleibt gleich",
+    label: "Bleibt wie heute",
     shortLabel: "Gleich",
-    description: "Hier ändert sich wenig.",
+    description: "Hier ändert sich nichts.",
     badgeClass: "bg-muted text-muted-foreground",
+    cardClass: "border-border/70 bg-white",
   },
   assist: {
-    label: "KI hilft",
+    label: "KI unterstützt",
     shortLabel: "KI hilft",
-    description: "Der Mensch bleibt drin.",
+    description: "Mensch macht weiter, KI hilft im Hintergrund.",
     badgeClass: "bg-node-ai-bg text-node-ai",
+    cardClass: "border-node-ai/30 bg-node-ai-bg/60",
   },
   replace: {
     label: "Neu mit KI",
     shortLabel: "Neu",
-    description: "Der Ablauf wird neu gebaut.",
-    badgeClass: "bg-node-process text-white",
+    description: "Die KI übernimmt den Schritt komplett.",
+    badgeClass: "bg-node-ai text-white",
+    cardClass: "border-node-ai/60 bg-node-ai/10",
   },
 };
 
-export const WORKSPACE_STAGES = {
-  current: {
-    id: "current",
+export const WORKFLOW_PHASES: Record<
+  WorkflowPhase,
+  {
+    id: WorkflowPhase;
+    step: string;
+    label: string;
+    headline: string;
+    description: string;
+  }
+> = {
+  draft: {
+    id: "draft",
     step: "1",
-    label: "Heute",
-    description: "Zeige den Ablauf von heute.",
+    label: "Skizzieren",
+    headline: "Wie läuft es heute?",
+    description: "Erfasse die Schritte. Reihenfolge zählt, Details später.",
   },
-  future: {
-    id: "future",
+  refine: {
+    id: "refine",
     step: "2",
-    label: "Mit KI",
-    description: "Markiere nur die Änderungen.",
+    label: "Verfeinern",
+    headline: "Was passiert in jedem Schritt?",
+    description: "Ein Schritt nach dem anderen. Nur das Wichtigste.",
+  },
+  ai: {
+    id: "ai",
+    step: "3",
+    label: "KI prüfen",
+    headline: "Wo könnte KI helfen?",
+    description: "Pro Schritt eine kurze Entscheidung.",
   },
   compare: {
     id: "compare",
-    step: "3",
+    step: "4",
     label: "Vergleich",
-    description: "Sieh beide Wege direkt.",
+    headline: "Vorher und Nachher",
+    description: "Sieh den Unterschied auf einen Blick.",
   },
-} as const;
+};
 
-export const GUIDING_QUESTIONS = {
-  current: [
-    "Was passiert als Nächstes?",
-    "Wo dauert es lang?",
-    "Wo gibt es Rückfragen?",
-  ],
-  future: [
-    "Wo kann KI helfen?",
-    "Wo prüft ein Mensch?",
-    "Welche Technik braucht es?",
-  ],
-} as const;
+export const PHASE_ORDER: WorkflowPhase[] = ["draft", "refine", "ai", "compare"];
+
+export const COMMON_TOOL_SUGGESTIONS = [
+  "Outlook",
+  "Teams",
+  "SharePoint",
+  "Excel",
+  "Word",
+  "CRM",
+  "Dynamics 365",
+  "WordPress",
+  "Slack",
+];
+
+export const STORAGE_KEY = "workflow-builder:state:v2";

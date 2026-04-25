@@ -1,13 +1,24 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+} from "react";
 import {
   Background,
   BackgroundVariant,
   Controls,
   ReactFlow,
+  ReactFlowProvider,
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
+  useReactFlow,
+  type Connection,
   type Edge,
+  type EdgeTypes,
   type Node,
   type NodeTypes,
   type OnConnect,
@@ -15,616 +26,696 @@ import {
   type OnNodesChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { ArrowRightLeft, Cpu, Eye, RotateCcw } from "lucide-react";
+import { ArrowRightLeft, Cpu, Eye, Maximize2, RotateCcw, Sparkles } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 
+import CarouselControls from "./CarouselControls";
 import EditPanel from "./EditPanel";
+import FlowEdge from "./FlowEdge";
 import NodePalette from "./NodePalette";
+import PhaseStepper from "./PhaseStepper";
 import ProcessNode from "./ProcessNode";
 import { Button } from "@/components/ui/button";
+import { useWorkflowAutoSave } from "@/hooks/useWorkflowStorage";
+import { DEFAULT_LAYOUT, layoutNodes, snapToGrid } from "@/lib/layout";
 import { cn } from "@/lib/utils";
 import {
-  WORKSPACE_STAGES,
-  type CanvasView,
+  PHASE_ORDER,
+  WORKFLOW_PHASES,
+  type FutureMode,
   type NodeType,
   type ProcessNodeData,
+  type WorkflowPhase,
 } from "@/types/process";
 
-const nodeTypes: NodeTypes = {
-  processNode: ProcessNode,
-};
+const nodeTypes: NodeTypes = { processNode: ProcessNode };
+const edgeTypes: EdgeTypes = { default: FlowEdge, smoothstep: FlowEdge };
 
-type LayoutPreset = {
-  xStart: number;
-  yStart: number;
-  xGap: number;
-  yGap: number;
-  componentGap: number;
-};
-
-const DEFAULT_LAYOUT: LayoutPreset = {
-  xStart: 80,
-  yStart: 80,
-  xGap: 260,
-  yGap: 140,
-  componentGap: 180,
-};
-
-const COMPARE_ORDER_LAYOUT: LayoutPreset = {
-  xStart: 64,
-  yStart: 72,
-  xGap: 220,
-  yGap: 122,
-  componentGap: 136,
-};
-
-const COMPARE_GRID_LAYOUT: LayoutPreset = {
-  xStart: 72,
-  yStart: 80,
-  xGap: 238,
-  yGap: 168,
-  componentGap: 0,
-};
-
-const COMPARE_GRID_COLUMNS = 4;
-
-type EditorStage = keyof typeof WORKSPACE_STAGES;
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 110;
 
 interface ProcessCanvasProps {
   initialProcessName: string;
   initialNodes: Node[];
   initialEdges: Edge[];
+  initialPhase?: WorkflowPhase;
 }
 
-interface FlowSurfaceProps {
-  title: string;
-  subtitle?: string;
-  nodes: Node[];
-  edges: Edge[];
-  viewMode: CanvasView;
-  interactive: boolean;
-  fitViewPadding?: number;
-  frameClassName?: string;
-  canvasClassName?: string;
-  onNodesChange?: OnNodesChange;
-  onEdgesChange?: OnEdgesChange;
-  onConnect?: OnConnect;
-  onNodeClick?: (_event: unknown, node: Node) => void;
-  onPaneClick?: () => void;
-  onInit?: (instance: ReactFlowInstance) => void;
-}
-
-const sortIdsByPosition = (ids: string[], nodeMap: Map<string, Node>) =>
-  [...ids].sort((left, right) => {
-    const leftNode = nodeMap.get(left);
-    const rightNode = nodeMap.get(right);
-
-    if (!leftNode || !rightNode) return left.localeCompare(right);
-
-    if (leftNode.position.y !== rightNode.position.y) {
-      return leftNode.position.y - rightNode.position.y;
-    }
-
-    return leftNode.position.x - rightNode.position.x;
-  });
-
-const sortNodesByFlow = (nodes: Node[]) =>
-  [...nodes].sort((left, right) => {
-    if (left.position.x !== right.position.x) {
-      return left.position.x - right.position.x;
-    }
-
-    if (left.position.y !== right.position.y) {
-      return left.position.y - right.position.y;
-    }
-
-    return left.id.localeCompare(right.id);
-  });
-
-const getAutoLayoutedNodes = (nodes: Node[], edges: Edge[], preset: LayoutPreset = DEFAULT_LAYOUT) => {
-  if (nodes.length === 0) return nodes;
-
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  const undirected = new Map<string, Set<string>>();
-  const incoming = new Map<string, Set<string>>();
-  const outgoing = new Map<string, Set<string>>();
-
-  for (const node of nodes) {
-    undirected.set(node.id, new Set());
-    incoming.set(node.id, new Set());
-    outgoing.set(node.id, new Set());
-  }
-
-  for (const edge of edges) {
-    if (!nodeMap.has(edge.source) || !nodeMap.has(edge.target)) continue;
-
-    undirected.get(edge.source)?.add(edge.target);
-    undirected.get(edge.target)?.add(edge.source);
-    incoming.get(edge.target)?.add(edge.source);
-    outgoing.get(edge.source)?.add(edge.target);
-  }
-
-  const unvisited = new Set(nodes.map((node) => node.id));
-  const positions = new Map<string, { x: number; y: number }>();
-  let currentBaseY = preset.yStart;
-
-  while (unvisited.size > 0) {
-    const rootCandidate =
-      sortIdsByPosition([...unvisited], nodeMap).find((id) => (incoming.get(id)?.size ?? 0) === 0) ??
-      sortIdsByPosition([...unvisited], nodeMap)[0];
-
-    const componentQueue = [rootCandidate];
-    const componentIds: string[] = [];
-    unvisited.delete(rootCandidate);
-
-    while (componentQueue.length > 0) {
-      const currentId = componentQueue.shift();
-
-      if (!currentId) continue;
-
-      componentIds.push(currentId);
-
-      for (const nextId of undirected.get(currentId) ?? []) {
-        if (!unvisited.has(nextId)) continue;
-
-        unvisited.delete(nextId);
-        componentQueue.push(nextId);
-      }
-    }
-
-    const componentSet = new Set(componentIds);
-    const indegree = new Map<string, number>();
-    const depth = new Map<string, number>();
-
-    for (const id of componentIds) {
-      const indegreeValue = [...(incoming.get(id) ?? [])].filter((parent) => componentSet.has(parent)).length;
-      indegree.set(id, indegreeValue);
-      if (indegreeValue === 0) {
-        depth.set(id, 0);
-      }
-    }
-
-    const depthQueue = sortIdsByPosition(
-      componentIds.filter((id) => (indegree.get(id) ?? 0) === 0),
-      nodeMap,
-    );
-
-    while (depthQueue.length > 0) {
-      const currentId = depthQueue.shift();
-
-      if (!currentId) continue;
-
-      const currentDepth = depth.get(currentId) ?? 0;
-
-      for (const nextId of outgoing.get(currentId) ?? []) {
-        if (!componentSet.has(nextId)) continue;
-
-        depth.set(nextId, Math.max(depth.get(nextId) ?? 0, currentDepth + 1));
-        indegree.set(nextId, (indegree.get(nextId) ?? 1) - 1);
-
-        if ((indegree.get(nextId) ?? 0) <= 0) {
-          depthQueue.push(nextId);
-        }
-      }
-    }
-
-    let fallbackDepth = Math.max(...depth.values(), 0);
-    for (const id of sortIdsByPosition(componentIds, nodeMap)) {
-      if (!depth.has(id)) {
-        fallbackDepth += 1;
-        depth.set(id, fallbackDepth);
-      }
-    }
-
-    const columns = new Map<number, string[]>();
-    for (const id of componentIds) {
-      const column = depth.get(id) ?? 0;
-      columns.set(column, [...(columns.get(column) ?? []), id]);
-    }
-
-    const maxColumnSize = Math.max(...[...columns.values()].map((columnIds) => columnIds.length), 1);
-    const componentHeight = (maxColumnSize - 1) * preset.yGap;
-
-    for (const [column, ids] of [...columns.entries()].sort((left, right) => left[0] - right[0])) {
-      const sortedIds = sortIdsByPosition(ids, nodeMap);
-      const columnHeight = (sortedIds.length - 1) * preset.yGap;
-      const columnStartY = currentBaseY + (componentHeight - columnHeight) / 2;
-
-      sortedIds.forEach((id, index) => {
-        positions.set(id, {
-          x: preset.xStart + column * preset.xGap,
-          y: columnStartY + index * preset.yGap,
-        });
-      });
-    }
-
-    currentBaseY += componentHeight + preset.componentGap;
-  }
-
-  return nodes.map((node) => ({
-    ...node,
-    position: positions.get(node.id) ?? node.position,
-  }));
-};
-
-const getCompareLayoutedNodes = (nodes: Node[], edges: Edge[]) => {
-  const orderedNodes = sortNodesByFlow(
-    getAutoLayoutedNodes(nodes, edges, COMPARE_ORDER_LAYOUT),
-  );
-
-  return orderedNodes.map((node, index) => {
-    const column = index % COMPARE_GRID_COLUMNS;
-    const row = Math.floor(index / COMPARE_GRID_COLUMNS);
-
-    return {
-      ...node,
-      position: {
-        x: COMPARE_GRID_LAYOUT.xStart + column * COMPARE_GRID_LAYOUT.xGap,
-        y: COMPARE_GRID_LAYOUT.yStart + row * COMPARE_GRID_LAYOUT.yGap,
-      },
-    };
-  });
-};
-
-const FlowSurface = ({
-  title,
-  subtitle,
-  nodes,
-  edges,
-  viewMode,
-  interactive,
-  fitViewPadding = 0.18,
-  frameClassName,
-  canvasClassName,
-  onNodesChange,
-  onEdgesChange,
-  onConnect,
-  onNodeClick,
-  onPaneClick,
-  onInit,
-}: FlowSurfaceProps) => {
-  const displayNodes = nodes.map((node) => ({
-    ...node,
-    data: { ...node.data, viewMode },
-  }));
-
-  return (
-    <div
-      className={cn(
-        "flex h-full min-h-[520px] flex-col overflow-hidden rounded-[24px] border border-border/70 bg-white shadow-sm",
-        frameClassName,
-      )}
-    >
-      <div className="border-b border-border/70 px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">{title}</p>
-          {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-        </div>
-      </div>
-
-      <div className={cn("flow-surface-canvas min-h-0 flex-1", canvasClassName)}>
-        <ReactFlow
-          nodes={displayNodes}
-          edges={edges}
-          onInit={interactive ? onInit : undefined}
-          onNodesChange={interactive ? onNodesChange : undefined}
-          onEdgesChange={interactive ? onEdgesChange : undefined}
-          onConnect={interactive ? onConnect : undefined}
-          onNodeClick={interactive ? onNodeClick : undefined}
-          onPaneClick={interactive ? onPaneClick : undefined}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: fitViewPadding }}
-          defaultEdgeOptions={{
-            type: "smoothstep",
-            style: { strokeWidth: 2 },
-          }}
-          nodesDraggable={interactive}
-          nodesConnectable={interactive}
-          elementsSelectable={interactive}
-          panOnDrag={interactive}
-          zoomOnScroll={interactive}
-          zoomOnDoubleClick={interactive}
-          preventScrolling={false}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="hsl(220 15% 92%)" />
-          {interactive && <Controls showInteractive={false} />}
-        </ReactFlow>
-      </div>
-    </div>
-  );
-};
-
-const ProcessCanvas = ({ initialProcessName, initialNodes, initialEdges }: ProcessCanvasProps) => {
+const ProcessCanvasInner = ({
+  initialProcessName,
+  initialNodes,
+  initialEdges,
+  initialPhase,
+}: ProcessCanvasProps) => {
+  const reactFlow = useReactFlow();
   const [processName, setProcessName] = useState(initialProcessName);
-  const [nodes, setNodes] = useState<Node[]>(() => getAutoLayoutedNodes(initialNodes, initialEdges, DEFAULT_LAYOUT));
+  const [phase, setPhase] = useState<WorkflowPhase>(initialPhase ?? "draft");
+  const [nodes, setNodes] = useState<Node[]>(() => layoutNodes(initialNodes, initialEdges));
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [editorStage, setEditorStage] = useState<EditorStage>("current");
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [compareView, setCompareView] = useState<"current" | "future">("current");
+  const [hydrated, setHydrated] = useState(false);
   const nodeCounter = useRef(initialNodes.length + 1);
-  const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const compareNodes = useMemo(
-    () => getCompareLayoutedNodes(nodes, edges),
-    [edges, nodes],
+  // hydrate flag — for autosave
+  useEffect(() => {
+    const t = window.setTimeout(() => setHydrated(true), 200);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  // persist
+  const storageData = useMemo(
+    () => ({ processName, phase, nodes, edges }),
+    [processName, phase, nodes, edges],
   );
+  useWorkflowAutoSave({ enabled: hydrated, data: storageData });
 
+  // ordered list for carousel
+  const orderedNodes = useMemo(() => {
+    const incoming = new Map<string, number>();
+    nodes.forEach((n) => incoming.set(n.id, 0));
+    edges.forEach((e) => {
+      if (incoming.has(e.target)) incoming.set(e.target, (incoming.get(e.target) ?? 0) + 1);
+    });
+    return [...nodes].sort((a, b) => {
+      if (a.position.x !== b.position.x) return a.position.x - b.position.x;
+      return a.position.y - b.position.y;
+    });
+  }, [nodes, edges]);
+
+  // active node in carousel mode
+  const carouselActiveId = orderedNodes[carouselIndex]?.id ?? null;
+  const isCarousel = phase === "refine" || phase === "ai";
+  const activeNodeId = isCarousel ? carouselActiveId : selectedNodeId;
+  const activeNode = nodes.find((n) => n.id === activeNodeId);
+
+  // focus state per node — for animation halo
+  const focusedNodes = useMemo(() => {
+    const map = new Map<string, "focus" | "neighbor" | "background" | "neutral">();
+    if (!isCarousel || !carouselActiveId) {
+      nodes.forEach((n) => {
+        map.set(n.id, n.id === selectedNodeId ? "focus" : "neutral");
+      });
+      return map;
+    }
+    const idx = orderedNodes.findIndex((n) => n.id === carouselActiveId);
+    orderedNodes.forEach((n, i) => {
+      const dist = Math.abs(i - idx);
+      map.set(n.id, dist === 0 ? "focus" : dist === 1 ? "neighbor" : "background");
+    });
+    return map;
+  }, [isCarousel, carouselActiveId, orderedNodes, nodes, selectedNodeId]);
+
+  // decorate nodes with viewMode + focusState + bottleneck visualization
+  const displayNodes = useMemo(() => {
+    const isCompareFuture = phase === "compare" && compareView === "future";
+    const viewMode = phase === "ai" || isCompareFuture ? "future" : "current";
+
+    return nodes.map((node) => {
+      const focusState = focusedNodes.get(node.id) ?? "neutral";
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          viewMode,
+          focusState,
+          hideMeta: false,
+        },
+        selected: node.id === activeNodeId,
+        draggable: phase === "draft",
+      };
+    });
+  }, [nodes, phase, compareView, focusedNodes, activeNodeId]);
+
+  // dim non-active edges in carousel view
+  const displayEdges = useMemo(() => {
+    return edges.map((edge) => {
+      const dimmed =
+        isCarousel &&
+        carouselActiveId !== null &&
+        edge.source !== carouselActiveId &&
+        edge.target !== carouselActiveId;
+      return {
+        ...edge,
+        type: "smoothstep",
+        data: { ...(edge.data ?? {}), dimmed },
+        animated: false,
+      };
+    });
+  }, [edges, isCarousel, carouselActiveId]);
+
+  // ---- node ops ----
   const onNodesChange: OnNodesChange = useCallback(
-    (changes) => setNodes((existingNodes) => applyNodeChanges(changes, existingNodes)),
+    (changes) => {
+      setNodes((existing) => {
+        const next = applyNodeChanges(changes, existing);
+        return next.map((node) => {
+          const change = changes.find((c) => c.type === "position" && (c as { id?: string }).id === node.id);
+          if (change && (change as { dragging?: boolean }).dragging === false) {
+            return {
+              ...node,
+              position: { x: snapToGrid(node.position.x), y: snapToGrid(node.position.y) },
+            };
+          }
+          return node;
+        });
+      });
+    },
     [],
   );
 
   const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) => setEdges((existingEdges) => applyEdgeChanges(changes, existingEdges)),
+    (changes) => setEdges((existing) => applyEdgeChanges(changes, existing)),
     [],
   );
 
   const onConnect: OnConnect = useCallback(
-    (connection) =>
-      setEdges((existingEdges) =>
-        addEdge({ ...connection, animated: false, style: { strokeWidth: 2 } }, existingEdges),
-      ),
+    (connection: Connection) =>
+      setEdges((existing) => addEdge({ ...connection, type: "smoothstep" }, existing)),
     [],
   );
 
-  const onNodeClick = useCallback((_: unknown, node: Node) => {
-    setSelectedNodeId(node.id);
-  }, []);
+  const onNodeClick = useCallback(
+    (_: unknown, node: Node) => {
+      if (isCarousel) {
+        const idx = orderedNodes.findIndex((n) => n.id === node.id);
+        if (idx >= 0) setCarouselIndex(idx);
+        return;
+      }
+      setSelectedNodeId(node.id);
+    },
+    [isCarousel, orderedNodes],
+  );
 
   const onPaneClick = useCallback(() => {
-    setSelectedNodeId(null);
+    if (!isCarousel) setSelectedNodeId(null);
+  }, [isCarousel]);
+
+  const createNode = useCallback(
+    (type: NodeType, position: { x: number; y: number }, label?: string): Node => {
+      const id = `node-${nodeCounter.current++}`;
+      return {
+        id,
+        type: "processNode",
+        position: { x: snapToGrid(position.x), y: snapToGrid(position.y) },
+        data: {
+          label: label ?? (type === "decision" ? "Neue Frage" : "Neuer Schritt"),
+          nodeType: type,
+          futureMode: "same",
+          isFresh: true,
+        } as ProcessNodeData,
+      };
+    },
+    [],
+  );
+
+  const addNodeFromPalette = useCallback(
+    (type: NodeType) => {
+      const newNode = createNode(type, { x: DEFAULT_LAYOUT.xStart, y: DEFAULT_LAYOUT.yStart });
+      setNodes((existing) => layoutNodes([...existing, newNode], edges));
+      setSelectedNodeId(newNode.id);
+      requestAnimationFrame(() => {
+        reactFlow.fitView({ padding: 0.2, duration: 420 });
+      });
+      window.setTimeout(() => {
+        setNodes((existing) =>
+          existing.map((n) => (n.id === newNode.id ? { ...n, data: { ...n.data, isFresh: false } } : n)),
+        );
+      }, 1600);
+    },
+    [createNode, edges, reactFlow],
+  );
+
+  const insertAfter = useCallback(
+    (sourceId: string, type: NodeType = "process") => {
+      const source = nodes.find((n) => n.id === sourceId);
+      if (!source) return;
+
+      const newNode = createNode(type, {
+        x: source.position.x + DEFAULT_LAYOUT.xGap,
+        y: source.position.y,
+      });
+
+      const newEdge: Edge = {
+        id: `edge-${sourceId}-${newNode.id}`,
+        source: sourceId,
+        target: newNode.id,
+        type: "smoothstep",
+      };
+
+      const nextNodes = layoutNodes([...nodes, newNode], [...edges, newEdge]);
+      setNodes(nextNodes);
+      setEdges((existing) => [...existing, newEdge]);
+      setSelectedNodeId(newNode.id);
+
+      requestAnimationFrame(() => {
+        reactFlow.fitView({ padding: 0.2, duration: 420 });
+      });
+      window.setTimeout(() => {
+        setNodes((existing) =>
+          existing.map((n) =>
+            n.id === newNode.id ? { ...n, data: { ...n.data, isFresh: false } } : n,
+          ),
+        );
+      }, 1600);
+    },
+    [createNode, edges, nodes, reactFlow],
+  );
+
+  const onDrop = useCallback(
+    (event: ReactDragEvent) => {
+      event.preventDefault();
+      const type = event.dataTransfer.getData("application/process-node") as NodeType;
+      if (!type) return;
+
+      const bounds = wrapperRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+
+      const position = reactFlow.screenToFlowPosition({
+        x: event.clientX - bounds.left,
+        y: event.clientY - bounds.top,
+      });
+
+      const newNode = createNode(type, position);
+      setNodes((existing) => [...existing, newNode]);
+      setSelectedNodeId(newNode.id);
+      window.setTimeout(() => {
+        setNodes((existing) =>
+          existing.map((n) =>
+            n.id === newNode.id ? { ...n, data: { ...n.data, isFresh: false } } : n,
+          ),
+        );
+      }, 1600);
+    },
+    [createNode, reactFlow],
+  );
+
+  const onDragOver = useCallback((event: ReactDragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
   }, []);
-
-  const addNode = useCallback((type: NodeType) => {
-    const id = `node-${nodeCounter.current++}`;
-    const defaultLabels: Record<NodeType, string> = {
-      process: "Neuer Schritt",
-      decision: "Neue Frage",
-      bottleneck: "Neues Problem",
-      system: "Neues System",
-    };
-
-    const newNode: Node = {
-      id,
-      type: "processNode",
-      position: {
-        x: DEFAULT_LAYOUT.xStart,
-        y: DEFAULT_LAYOUT.yStart,
-      },
-      data: {
-        label: defaultLabels[type],
-        nodeType: type,
-        futureMode: "same",
-        isFresh: true,
-      } as ProcessNodeData,
-    };
-
-    setNodes((existingNodes) => getAutoLayoutedNodes([...existingNodes, newNode], edges, DEFAULT_LAYOUT));
-    setSelectedNodeId(id);
-
-    requestAnimationFrame(() => {
-      flowInstanceRef.current?.fitView({ padding: 0.16, duration: 380 });
-    });
-
-    window.setTimeout(() => {
-      setNodes((existingNodes) =>
-        existingNodes.map((node) =>
-          node.id === id
-            ? { ...node, data: { ...node.data, isFresh: false } }
-            : node,
-        ),
-      );
-    }, 1800);
-  }, [edges]);
 
   const updateNodeData = useCallback(
     (updates: Partial<ProcessNodeData>) => {
-      if (!selectedNodeId) return;
-
-      setNodes((existingNodes) =>
-        existingNodes.map((node) =>
-          node.id === selectedNodeId
-            ? { ...node, data: { ...node.data, ...updates } }
-            : node,
+      if (!activeNodeId) return;
+      setNodes((existing) =>
+        existing.map((n) =>
+          n.id === activeNodeId ? { ...n, data: { ...n.data, ...updates } } : n,
         ),
       );
     },
-    [selectedNodeId],
+    [activeNodeId],
   );
 
-  const deleteNode = useCallback(() => {
-    if (!selectedNodeId) return;
-
-    setNodes((existingNodes) => existingNodes.filter((node) => node.id !== selectedNodeId));
-    setEdges((existingEdges) =>
-      existingEdges.filter((edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId),
+  const deleteActive = useCallback(() => {
+    if (!activeNodeId) return;
+    setNodes((existing) => existing.filter((n) => n.id !== activeNodeId));
+    setEdges((existing) =>
+      existing.filter((e) => e.source !== activeNodeId && e.target !== activeNodeId),
     );
+    if (isCarousel) {
+      setCarouselIndex((idx) => Math.max(0, Math.min(idx, orderedNodes.length - 2)));
+    }
     setSelectedNodeId(null);
-  }, [selectedNodeId]);
+  }, [activeNodeId, isCarousel, orderedNodes.length]);
 
-  const resetProcess = useCallback(() => {
-    if (window.confirm("Möchtest du den gesamten Ablauf zurücksetzen?")) {
+  const resetAll = useCallback(() => {
+    if (window.confirm("Alles zurücksetzen? Dein aktueller Ablauf geht verloren.")) {
       setNodes([]);
       setEdges([]);
       setSelectedNodeId(null);
-      setEditorStage("current");
+      setPhase("draft");
+      setCarouselIndex(0);
       nodeCounter.current = 1;
     }
   }, []);
 
   const autoArrange = useCallback(() => {
     if (nodes.length === 0) return;
-
-    const arrangedNodes = getAutoLayoutedNodes(nodes, edges, DEFAULT_LAYOUT);
-    setNodes(arrangedNodes);
-
+    setNodes(layoutNodes(nodes, edges));
     requestAnimationFrame(() => {
-      flowInstanceRef.current?.fitView({ padding: 0.16, duration: 400 });
+      reactFlow.fitView({ padding: 0.18, duration: 420 });
     });
-  }, [edges, nodes]);
+  }, [edges, nodes, reactFlow]);
 
-  const switchStage = useCallback(
-    (nextStage: EditorStage) => {
-      setEditorStage(nextStage);
+  // Camera follow in carousel mode
+  useEffect(() => {
+    if (!isCarousel || !carouselActiveId) return;
+    const node = nodes.find((n) => n.id === carouselActiveId);
+    if (!node) return;
+    reactFlow.setCenter(
+      node.position.x + NODE_WIDTH / 2,
+      node.position.y + NODE_HEIGHT / 2,
+      { zoom: 1.1, duration: 600 },
+    );
+  }, [carouselActiveId, isCarousel, nodes, reactFlow]);
 
-      if (nextStage === "compare") {
-        setSelectedNodeId(null);
+  // Phase change side-effects
+  const switchPhase = useCallback(
+    (next: WorkflowPhase) => {
+      setPhase(next);
+      setSelectedNodeId(null);
+      if (next === "refine" || next === "ai") {
+        setCarouselIndex(0);
+      } else {
+        requestAnimationFrame(() => {
+          reactFlow.fitView({ padding: 0.18, duration: 420 });
+        });
       }
     },
-    [],
+    [reactFlow],
   );
 
-  const selectedNode = nodes.find((node) => node.id === selectedNodeId);
-  const changedNodeCount = nodes.filter(
-    (node) => ((node.data as ProcessNodeData).futureMode ?? "same") !== "same",
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (isCarousel) {
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          setCarouselIndex((i) => Math.min(orderedNodes.length - 1, i + 1));
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          setCarouselIndex((i) => Math.max(0, i - 1));
+        }
+      }
+
+      if (phase === "draft") {
+        if (e.key === "Enter" && selectedNodeId) {
+          e.preventDefault();
+          insertAfter(selectedNodeId, "process");
+        } else if (e.key === "Backspace" && selectedNodeId && e.metaKey) {
+          e.preventDefault();
+          deleteActive();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [deleteActive, insertAfter, isCarousel, orderedNodes.length, phase, selectedNodeId]);
+
+  // counts
+  const changedCount = nodes.filter(
+    (n) => ((n.data as ProcessNodeData).futureMode ?? "same") !== "same",
   ).length;
-  const visibleNodeCount = compareNodes.length;
+  const bottleneckCount = nodes.filter((n) => (n.data as ProcessNodeData).isBottleneck).length;
+  const phaseConfig = WORKFLOW_PHASES[phase];
+
+  // disable phases beyond draft until at least 1 node
+  const disabledPhases = nodes.length === 0 ? PHASE_ORDER.filter((p) => p !== "draft") : [];
+
+  const carouselPosition = isCarousel
+    ? orderedNodes.findIndex((n) => n.id === activeNodeId)
+    : undefined;
 
   return (
-    <div className="flex h-screen flex-col bg-[#f7f8fb]">
-      <header className="border-b border-border/70 bg-white/95 backdrop-blur">
-        <div className="mx-auto w-full max-w-[1700px] px-4 py-4 md:px-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+    <div className="flex h-screen flex-col bg-[#f5f6fa]">
+      {/* Header */}
+      <header className="border-b border-border/60 bg-white/95 backdrop-blur">
+        <div className="mx-auto w-full max-w-[1760px] px-4 py-3 md:px-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                Dein Prozess
+              <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+                Workflow
               </p>
               <input
                 value={processName}
-                onChange={(event) => setProcessName(event.target.value)}
-                className="mt-1 w-full max-w-2xl border-none bg-transparent p-0 text-2xl font-semibold text-foreground outline-none placeholder:text-muted-foreground md:text-3xl"
+                onChange={(e) => setProcessName(e.target.value)}
+                className="mt-0.5 w-full max-w-2xl border-0 bg-transparent p-0 text-2xl font-semibold tracking-tight text-foreground outline-none placeholder:text-muted-foreground md:text-[28px]"
                 placeholder="Name des Prozesses"
               />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground">
+              <div className="rounded-full bg-muted px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
                 {nodes.length} Schritte
               </div>
-              <div className="rounded-full bg-node-ai-bg px-3 py-1.5 text-xs text-node-ai">
-                {changedNodeCount} geändert
-              </div>
-              {editorStage !== "compare" && (
+              {bottleneckCount > 0 && (
+                <div className="rounded-full bg-node-bottleneck-bg px-3 py-1.5 text-[11px] font-medium text-node-bottleneck">
+                  {bottleneckCount} Engstellen
+                </div>
+              )}
+              {changedCount > 0 && (
+                <div className="rounded-full bg-node-ai-bg px-3 py-1.5 text-[11px] font-medium text-node-ai">
+                  <Sparkles className="mr-1 inline h-3 w-3" />
+                  {changedCount} mit KI
+                </div>
+              )}
+              {phase === "draft" && nodes.length > 1 && (
                 <Button
                   variant="outline"
-                  className="h-9 rounded-full px-4 text-sm"
+                  size="sm"
+                  className="h-9 rounded-full px-3 text-xs"
                   onClick={autoArrange}
+                  title="Automatisch ordnen"
                 >
-                  Auto ordnen
+                  <Maximize2 className="mr-1 h-3.5 w-3.5" />
+                  Ordnen
                 </Button>
               )}
               <Button
-                variant="outline"
-                className="h-9 rounded-full px-4 text-sm"
-                onClick={resetProcess}
+                variant="ghost"
+                size="sm"
+                className="h-9 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground"
+                onClick={resetAll}
+                title="Alles zurücksetzen"
               >
-                <RotateCcw className="h-4 w-4" />
-                Reset
+                <RotateCcw className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            {(Object.keys(WORKSPACE_STAGES) as EditorStage[]).map((stage) => {
-              const config = WORKSPACE_STAGES[stage];
-              const isActive = editorStage === stage;
-              const disabled = stage !== "current" && nodes.length === 0;
-
-              return (
-                <button
-                  key={stage}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => switchStage(stage)}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition-colors",
-                    isActive
-                      ? "border-primary bg-primary/8 text-foreground"
-                      : "border-border/70 bg-white text-muted-foreground hover:bg-muted/30",
-                    disabled && "cursor-not-allowed opacity-50",
-                  )}
-                >
-                  {stage === "current" && <Eye className="h-4 w-4" />}
-                  {stage === "future" && <Cpu className="h-4 w-4" />}
-                  {stage === "compare" && <ArrowRightLeft className="h-4 w-4" />}
-                  <span>{config.label}</span>
-                </button>
-              );
-            })}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <PhaseStepper current={phase} onChange={switchPhase} disabledPhases={disabledPhases} />
+            <p className="text-[12px] text-muted-foreground">
+              <span className="font-medium text-foreground">{phaseConfig.headline}</span>
+              {" — "}
+              {phaseConfig.description}
+            </p>
           </div>
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 p-3 md:p-4">
-        {editorStage === "compare" ? (
-          <div className="mx-auto grid h-full max-w-[1760px] gap-3 lg:grid-cols-2">
-            <FlowSurface
-              title="Vorher"
-              subtitle={`${visibleNodeCount} Schritte · max. 4 pro Zeile`}
-              nodes={compareNodes}
-              edges={edges}
-              viewMode="current"
-              interactive={false}
-              fitViewPadding={0.08}
-              frameClassName="compare-flow-frame"
-              canvasClassName="compare-flow-canvas"
-            />
-            <FlowSurface
-              title="Nachher"
-              subtitle={
-                changedNodeCount > 0
-                  ? `${changedNodeCount} Änderungen · max. 4 pro Zeile`
-                  : "Noch keine Änderung · max. 4 pro Zeile"
-              }
-              nodes={compareNodes}
-              edges={edges}
-              viewMode="future"
-              interactive={false}
-              fitViewPadding={0.08}
-              frameClassName="compare-flow-frame"
-              canvasClassName="compare-flow-canvas"
-            />
-          </div>
-        ) : (
-          <div className="mx-auto flex h-full max-w-[1700px] gap-3">
-            <div className="relative min-w-0 flex-1">
-              {editorStage === "current" && <NodePalette onAddNode={addNode} />}
+      {/* Main canvas area */}
+      <main className="relative min-h-0 flex-1">
+        <div
+          ref={wrapperRef}
+          onDrop={phase === "draft" ? onDrop : undefined}
+          onDragOver={phase === "draft" ? onDragOver : undefined}
+          className="relative h-full w-full"
+        >
+          {phase === "draft" && <NodePalette onAddNode={addNodeFromPalette} />}
 
-              {!selectedNode && (
-                <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-2xl border border-border/70 bg-white/95 px-3 py-2 text-xs text-muted-foreground shadow-sm">
-                  Klicke einen Schritt oder füge links etwas hinzu.
-                </div>
-              )}
+          {/* Compare toggle */}
+          {phase === "compare" && (
+            <div className="pointer-events-auto absolute left-1/2 top-4 z-10 -translate-x-1/2">
+              <div className="flex items-center gap-1 rounded-full border border-border/70 bg-white/95 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
+                <button
+                  onClick={() => setCompareView("current")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium transition-all",
+                    compareView === "current"
+                      ? "bg-foreground text-white shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  Vorher
+                </button>
+                <ArrowRightLeft className="h-3 w-3 text-muted-foreground/60" />
+                <button
+                  onClick={() => setCompareView("future")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium transition-all",
+                    compareView === "future"
+                      ? "bg-node-ai text-white shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Cpu className="h-3.5 w-3.5" />
+                  Mit KI
+                </button>
+              </div>
+            </div>
+          )}
 
-              <FlowSurface
-                title={WORKSPACE_STAGES[editorStage].label}
-                subtitle={editorStage === "future" ? "Nur die Änderungen markieren" : "Ablauf aufbauen"}
-                nodes={nodes}
-                edges={edges}
-                viewMode={editorStage === "current" ? "current" : "future"}
-                interactive
-                fitViewPadding={0.14}
-                canvasClassName="builder-flow-canvas"
-                onInit={(instance) => {
-                  flowInstanceRef.current = instance;
+          {/* Empty state */}
+          {nodes.length === 0 && phase === "draft" && (
+            <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center">
+              <div className="max-w-md rounded-3xl border border-dashed border-border bg-white/80 px-8 py-10 text-center backdrop-blur">
+                <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Leerer Canvas
+                </p>
+                <h2 className="mt-3 text-2xl font-semibold text-foreground">
+                  Beginne mit dem ersten Schritt.
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Ziehe ein Element aus der Palette links oder klicke darauf.
+                  Mit <span className="font-mono text-foreground">Enter</span> fügst du Folgeschritte ein.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* "+ Schritt danach" floating button next to selected node in draft mode */}
+          {phase === "draft" && selectedNodeId && (() => {
+            const node = nodes.find((n) => n.id === selectedNodeId);
+            if (!node) return null;
+            const screen = reactFlow.flowToScreenPosition({
+              x: node.position.x + NODE_WIDTH + 16,
+              y: node.position.y + NODE_HEIGHT / 2 - 18,
+            });
+            const bounds = wrapperRef.current?.getBoundingClientRect();
+            if (!bounds) return null;
+            return (
+              <button
+                type="button"
+                onClick={() => insertAfter(selectedNodeId, "process")}
+                className="pointer-events-auto absolute z-10 flex h-9 items-center gap-1.5 rounded-full border border-primary/30 bg-white px-3 text-xs font-medium text-primary shadow-[0_8px_20px_rgba(37,99,235,0.18)] transition-all hover:scale-105 hover:bg-primary hover:text-primary-foreground"
+                style={{
+                  left: screen.x - bounds.left,
+                  top: screen.y - bounds.top,
                 }}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onNodeClick={onNodeClick}
-                onPaneClick={onPaneClick}
+                title="Folgeschritt einfügen (Enter)"
+              >
+                <span className="text-base leading-none">+</span>
+                Schritt danach
+              </button>
+            );
+          })()}
+
+          <div
+            className={cn(
+              "h-full w-full transition-all duration-500",
+              phase === "compare" && compareView === "future" && "compare-future-bg",
+            )}
+          >
+            <ReactFlow
+              nodes={displayNodes}
+              edges={displayEdges}
+              onNodesChange={phase === "draft" ? onNodesChange : undefined}
+              onEdgesChange={phase === "draft" ? onEdgesChange : undefined}
+              onConnect={phase === "draft" ? onConnect : undefined}
+              onNodeClick={phase !== "compare" ? onNodeClick : undefined}
+              onPaneClick={onPaneClick}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              fitView
+              fitViewOptions={{ padding: 0.2 }}
+              defaultEdgeOptions={{ type: "smoothstep" }}
+              snapToGrid
+              snapGrid={[24, 24]}
+              nodesDraggable={phase === "draft"}
+              nodesConnectable={phase === "draft"}
+              elementsSelectable={phase !== "compare"}
+              panOnDrag={!isCarousel}
+              zoomOnScroll
+              zoomOnDoubleClick={false}
+              minZoom={0.35}
+              maxZoom={1.6}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background
+                variant={BackgroundVariant.Dots}
+                gap={24}
+                size={1.2}
+                color="hsl(220 15% 90%)"
+              />
+              {phase === "draft" && <Controls showInteractive={false} position="bottom-right" />}
+            </ReactFlow>
+          </div>
+
+          {/* Carousel controls — bottom center */}
+          {isCarousel && orderedNodes.length > 0 && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center px-4">
+              <CarouselControls
+                index={carouselIndex}
+                total={orderedNodes.length}
+                onPrev={() => setCarouselIndex((i) => Math.max(0, i - 1))}
+                onNext={() => setCarouselIndex((i) => Math.min(orderedNodes.length - 1, i + 1))}
+                onFinish={() => switchPhase(phase === "refine" ? "ai" : "compare")}
+                hint={phase === "refine" ? "Pfeiltasten ← →" : "Pfeiltasten ← →"}
+                finishLabel={phase === "refine" ? "Weiter zur KI" : "Vergleich ansehen"}
               />
             </div>
+          )}
+        </div>
 
-            {selectedNode && (
-              <EditPanel
-                key={`${editorStage}-${selectedNode.id}`}
-                nodeData={selectedNode.data as ProcessNodeData}
-                stage={editorStage}
-                onUpdate={updateNodeData}
-                onClose={() => setSelectedNodeId(null)}
-                onDelete={deleteNode}
-              />
+        {/* Edit panel */}
+        {(phase === "draft" || phase === "refine" || phase === "ai") && activeNode && (
+          <div
+            className={cn(
+              "pointer-events-auto absolute right-4 top-4 z-20 h-[calc(100%-2rem)] animate-slide-in-right",
+            )}
+          >
+            <EditPanel
+              key={`${phase}-${activeNode.id}`}
+              nodeData={activeNode.data as ProcessNodeData}
+              phase={phase}
+              onUpdate={updateNodeData}
+              onClose={() => {
+                if (isCarousel) {
+                  // can't close in carousel — advance instead
+                  setCarouselIndex((i) => Math.min(orderedNodes.length - 1, i + 1));
+                } else {
+                  setSelectedNodeId(null);
+                }
+              }}
+              onDelete={deleteActive}
+              onAdvance={
+                isCarousel
+                  ? () => {
+                      if (carouselIndex >= orderedNodes.length - 1) {
+                        switchPhase(phase === "refine" ? "ai" : "compare");
+                      } else {
+                        setCarouselIndex((i) => i + 1);
+                      }
+                    }
+                  : undefined
+              }
+              position={carouselPosition}
+              total={isCarousel ? orderedNodes.length : undefined}
+            />
+          </div>
+        )}
+
+        {/* Compare summary panel */}
+        {phase === "compare" && (
+          <div className="pointer-events-auto absolute bottom-6 right-6 z-10 flex max-w-sm flex-col gap-2 rounded-2xl border border-border/70 bg-white/95 p-4 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur">
+            <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Übersicht
+            </p>
+            <div className="flex items-center gap-3 text-sm">
+              <span className="font-semibold text-foreground">{nodes.length}</span>
+              <span className="text-muted-foreground">Schritte gesamt</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm">
+              <span className="font-semibold text-node-ai">{changedCount}</span>
+              <span className="text-muted-foreground">davon mit KI verändert</span>
+            </div>
+            {bottleneckCount > 0 && (
+              <div className="flex items-center gap-3 text-sm">
+                <span className="font-semibold text-node-bottleneck">{bottleneckCount}</span>
+                <span className="text-muted-foreground">markierte Engstellen</span>
+              </div>
+            )}
+            {nodes.length > 0 && (
+              <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                Wechsle oben zwischen <span className="font-medium text-foreground">Vorher</span> und{" "}
+                <span className="font-medium text-node-ai">Mit KI</span>, um den Unterschied zu sehen.
+              </p>
             )}
           </div>
         )}
@@ -632,5 +723,11 @@ const ProcessCanvas = ({ initialProcessName, initialNodes, initialEdges }: Proce
     </div>
   );
 };
+
+const ProcessCanvas = (props: ProcessCanvasProps) => (
+  <ReactFlowProvider>
+    <ProcessCanvasInner {...props} />
+  </ReactFlowProvider>
+);
 
 export default ProcessCanvas;

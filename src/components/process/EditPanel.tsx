@@ -1,11 +1,14 @@
 import { useState, type ReactNode } from "react";
-import { Trash2, X } from "lucide-react";
+import { AlertTriangle, Plus, Sparkles, Trash2, X } from "lucide-react";
 
 import {
+  COMMON_TOOL_SUGGESTIONS,
   FUTURE_MODE_CONFIG,
   NODE_TYPE_CONFIG,
   type FutureMode,
+  type NodeType,
   type ProcessNodeData,
+  type WorkflowPhase,
 } from "@/types/process";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,439 +19,384 @@ import { cn } from "@/lib/utils";
 
 interface EditPanelProps {
   nodeData: ProcessNodeData;
-  stage: "current" | "future";
+  phase: WorkflowPhase;
   onUpdate: (data: Partial<ProcessNodeData>) => void;
   onClose: () => void;
   onDelete: () => void;
+  onAdvance?: () => void;
+  position?: number;
+  total?: number;
 }
 
-const FieldLabel = ({
-  children,
-  htmlFor,
-  hint,
-}: {
-  children: string;
-  htmlFor?: string;
-  hint?: string;
-}) => (
-  <div className="mb-2 flex items-center gap-2">
-    <Label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
-      {children}
-    </Label>
-    {hint && (
-      <span
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border text-[11px] text-muted-foreground"
-        title={hint}
-      >
-        ?
-      </span>
-    )}
+const Field = ({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) => (
+  <div className="space-y-1.5">
+    <div className="flex items-center gap-2">
+      <Label className="text-[13px] font-medium text-foreground">{label}</Label>
+      {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+    </div>
+    {children}
   </div>
 );
 
-const Section = ({ children }: { children: ReactNode }) => (
-  <div className="space-y-3 rounded-[20px] border border-border/70 bg-white p-3">{children}</div>
+const Section = ({ children, className }: { children: ReactNode; className?: string }) => (
+  <div className={cn("space-y-3 rounded-2xl border border-border/70 bg-white p-4", className)}>
+    {children}
+  </div>
 );
 
-const TogglePanelButton = ({
-  open,
-  closedLabel,
-  openLabel,
-  onClick,
+const TagEditor = ({
+  tools,
+  onChange,
 }: {
-  open: boolean;
-  closedLabel: string;
-  openLabel: string;
-  onClick: () => void;
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="w-full rounded-2xl border border-border/70 bg-white px-4 py-3 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
-  >
-    {open ? openLabel : closedLabel}
-  </button>
-);
+  tools: string[];
+  onChange: (next: string[]) => void;
+}) => {
+  const [draft, setDraft] = useState("");
 
-const EditPanel = ({ nodeData, stage, onUpdate, onClose, onDelete }: EditPanelProps) => {
-  const config = NODE_TYPE_CONFIG[nodeData.nodeType];
-  const futureMode = (nodeData.futureMode ?? "same") as FutureMode;
-  const [showCurrentExtras, setShowCurrentExtras] = useState(() =>
-    Boolean(
-      nodeData.responsible ||
-        nodeData.duration ||
-        nodeData.options ||
-        nodeData.frequency ||
-        nodeData.impact ||
-        nodeData.systemType ||
-        nodeData.connectedTo,
-    ),
-  );
-  const [showFutureExtras, setShowFutureExtras] = useState(() =>
-    Boolean(
-      nodeData.futureLabel ||
-        nodeData.aiInput ||
-        nodeData.aiOutput ||
-        nodeData.techDetails ||
-        nodeData.reviewCheckpoint,
-    ),
-  );
+  const addTool = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (tools.includes(trimmed)) {
+      setDraft("");
+      return;
+    }
+    onChange([...tools, trimmed]);
+    setDraft("");
+  };
+
+  const remove = (value: string) => onChange(tools.filter((t) => t !== value));
+
+  const suggestions = COMMON_TOOL_SUGGESTIONS.filter((s) => !tools.includes(s));
 
   return (
-    <aside className="h-full w-full max-w-[340px] overflow-y-auto rounded-[24px] border border-border/70 bg-[#fcfcfc] p-3 shadow-sm lg:w-[340px]">
-      <div className="sticky top-0 z-10 mb-3 flex items-start justify-between rounded-[20px] border border-border/70 bg-white/95 p-3 shadow-sm backdrop-blur">
-        <div className="space-y-1">
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {tools.map((tool) => (
+          <button
+            key={tool}
+            type="button"
+            onClick={() => remove(tool)}
+            className="group inline-flex items-center gap-1.5 rounded-full bg-node-system-bg px-2.5 py-1 text-xs font-medium text-node-system transition-colors hover:bg-node-system/15"
+          >
+            {tool}
+            <X className="h-3 w-3 opacity-60 group-hover:opacity-100" />
+          </button>
+        ))}
+        <div className="inline-flex items-center gap-1 rounded-full border border-dashed border-border/70 bg-white px-2 py-0.5">
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addTool(draft);
+              }
+            }}
+            placeholder="Tool…"
+            className="h-7 w-24 border-0 bg-transparent p-0 text-xs shadow-none focus-visible:ring-0"
+          />
+          {draft && (
+            <button
+              type="button"
+              onClick={() => addTool(draft)}
+              className="rounded-full p-1 text-muted-foreground hover:bg-muted"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+      {suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {suggestions.slice(0, 5).map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              onClick={() => addTool(suggestion)}
+              className="rounded-full border border-border/70 bg-white px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted/40"
+            >
+              + {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const EditPanel = ({
+  nodeData,
+  phase,
+  onUpdate,
+  onClose,
+  onDelete,
+  onAdvance,
+  position,
+  total,
+}: EditPanelProps) => {
+  const config = NODE_TYPE_CONFIG[nodeData.nodeType];
+  const futureMode = (nodeData.futureMode ?? "same") as FutureMode;
+
+  return (
+    <aside className="edit-panel flex h-full w-[360px] shrink-0 flex-col overflow-hidden rounded-[24px] border border-border/70 bg-[#fcfcfd] shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
+      <div className="flex items-start justify-between gap-3 border-b border-border/60 bg-white/95 p-4 backdrop-blur">
+        <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2">
-            <span className={cn("text-sm font-semibold", config.colorClass)}>{config.emoji}</span>
-            <span className={cn("text-[11px] font-semibold uppercase tracking-[0.2em]", config.colorClass)}>
+            <span className={cn("text-[12px] font-semibold leading-none", config.colorClass)}>
+              {config.emoji}
+            </span>
+            <span
+              className={cn(
+                "text-[10px] font-semibold uppercase tracking-[0.18em]",
+                config.colorClass,
+              )}
+            >
               {config.label}
             </span>
+            {typeof position === "number" && typeof total === "number" && (
+              <span className="ml-auto rounded-full bg-muted px-2 py-[2px] text-[10px] font-medium text-muted-foreground">
+                {position + 1} / {total}
+              </span>
+            )}
           </div>
-          <h2 className="text-lg font-semibold text-foreground">
-            {stage === "current" ? "Schritt bearbeiten" : "KI-Version festlegen"}
+          <h2 className="text-base font-semibold text-foreground">
+            {phase === "ai" ? "KI-Möglichkeit" : "Schritt bearbeiten"}
           </h2>
-          <p className="text-sm leading-6 text-muted-foreground">
-            {stage === "current"
-              ? "Trage nur das Wichtigste ein."
-              : "Wähle zuerst, was sich ändert."}
+          <p className="text-xs leading-5 text-muted-foreground">
+            {phase === "draft"
+              ? "Nur Name. Reihenfolge zählt."
+              : phase === "refine"
+                ? "Wer, was, wie lange."
+                : phase === "ai"
+                  ? "Eine Entscheidung reicht."
+                  : ""}
           </p>
         </div>
 
-        <button onClick={onClose} className="rounded-full p-2 transition-colors hover:bg-muted" title="Schließen">
-          <X className="h-5 w-5 text-muted-foreground" />
+        <button
+          onClick={onClose}
+          className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted"
+          title="Schließen"
+        >
+          <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="space-y-3">
-        {stage === "current" && (
+      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        {(phase === "draft" || phase === "refine") && (
+          <Section>
+            <Field label="Name">
+              <Input
+                value={nodeData.label}
+                onChange={(e) => onUpdate({ label: e.target.value })}
+                className="h-11 rounded-xl"
+                placeholder="Was passiert hier?"
+                autoFocus
+              />
+            </Field>
+
+            {phase === "draft" && (
+              <Field label="Typ">
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.keys(NODE_TYPE_CONFIG) as NodeType[]).map((type) => {
+                    const tConfig = NODE_TYPE_CONFIG[type];
+                    const active = nodeData.nodeType === type;
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => onUpdate({ nodeType: type })}
+                        className={cn(
+                          "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
+                          active
+                            ? "border-primary bg-primary/8 text-foreground shadow-sm"
+                            : "border-border/70 bg-white text-muted-foreground hover:bg-muted/30",
+                        )}
+                      >
+                        <span className={cn("text-base", tConfig.colorClass)}>{tConfig.emoji}</span>
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground">{tConfig.label}</p>
+                          <p className="text-[10px] leading-4 text-muted-foreground">
+                            {tConfig.description}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            )}
+          </Section>
+        )}
+
+        {phase === "refine" && (
           <>
             <Section>
-              <div>
-                <FieldLabel htmlFor="node-label" children="Name" />
-                <Input
-                  id="node-label"
-                  value={nodeData.label}
-                  onChange={(event) => onUpdate({ label: event.target.value })}
-                  className="h-12 rounded-2xl"
-                  placeholder="Name des Schritts"
-                />
-              </div>
-
-              <div>
-                <FieldLabel
-                  htmlFor="node-description"
-                  children={nodeData.nodeType === "bottleneck" ? "Kurz zum Problem" : "Kurz erklärt"}
-                  hint="Ein kurzer Satz reicht."
-                />
+              <Field label="Kurz erklärt" hint="Ein Satz reicht.">
                 <Textarea
-                  id="node-description"
                   value={nodeData.description || ""}
-                  onChange={(event) => onUpdate({ description: event.target.value })}
-                  className="min-h-[110px] rounded-2xl"
+                  onChange={(e) => onUpdate({ description: e.target.value })}
+                  className="min-h-[88px] rounded-xl text-sm"
                   placeholder={
                     nodeData.nodeType === "decision"
-                      ? "Was passiert an dieser Stelle?"
-                      : nodeData.nodeType === "system"
-                        ? "Wofür ist dieses System da?"
-                        : nodeData.nodeType === "bottleneck"
-                          ? "Was läuft hier schlecht?"
-                          : "Was passiert hier?"
+                      ? "Worüber wird entschieden?"
+                      : "Was passiert in diesem Schritt?"
                   }
                 />
-              </div>
-            </Section>
+              </Field>
 
-            <TogglePanelButton
-              open={showCurrentExtras}
-              closedLabel="Mehr Angaben"
-              openLabel="Weniger Angaben"
-              onClick={() => setShowCurrentExtras((value) => !value)}
-            />
-
-            {showCurrentExtras && nodeData.nodeType === "process" && (
-              <Section>
-                <div>
-                  <FieldLabel htmlFor="node-responsible" children="Wer?" />
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Wer?">
                   <Input
-                    id="node-responsible"
                     value={nodeData.responsible || ""}
-                    onChange={(event) => onUpdate({ responsible: event.target.value })}
-                    className="h-12 rounded-2xl"
-                    placeholder="z. B. Vertrieb"
+                    onChange={(e) => onUpdate({ responsible: e.target.value })}
+                    className="h-10 rounded-xl text-sm"
+                    placeholder="z. B. Sales"
                   />
-                </div>
-
-                <div>
-                  <FieldLabel htmlFor="node-duration" children="Dauer" />
+                </Field>
+                <Field label="Dauer">
                   <Input
-                    id="node-duration"
                     value={nodeData.duration || ""}
-                    onChange={(event) => onUpdate({ duration: event.target.value })}
-                    className="h-12 rounded-2xl"
+                    onChange={(e) => onUpdate({ duration: e.target.value })}
+                    className="h-10 rounded-xl text-sm"
                     placeholder="z. B. 30 Min"
                   />
-                </div>
-              </Section>
-            )}
-
-            {showCurrentExtras && nodeData.nodeType === "decision" && (
-              <Section>
-                <div>
-                  <FieldLabel htmlFor="node-question" children="Frage" />
-                  <Input
-                    id="node-question"
-                    value={nodeData.question || ""}
-                    onChange={(event) => onUpdate({ question: event.target.value })}
-                    className="h-12 rounded-2xl"
-                    placeholder="z. B. Sind alle Daten da?"
-                  />
-                </div>
-
-                <div>
-                  <FieldLabel htmlFor="node-options" children="Antworten" />
-                  <Input
-                    id="node-options"
-                    value={nodeData.options || ""}
-                    onChange={(event) => onUpdate({ options: event.target.value })}
-                    className="h-12 rounded-2xl"
-                    placeholder="z. B. Ja / Nein"
-                  />
-                </div>
-              </Section>
-            )}
-
-            {showCurrentExtras && nodeData.nodeType === "bottleneck" && (
-              <Section>
-                <div>
-                  <FieldLabel htmlFor="node-problem" children="Problem" />
-                  <Textarea
-                    id="node-problem"
-                    value={nodeData.problem || ""}
-                    onChange={(event) => onUpdate({ problem: event.target.value })}
-                    className="min-h-[96px] rounded-2xl"
-                    placeholder="Was bremst hier?"
-                  />
-                </div>
-
-                <div>
-                  <FieldLabel htmlFor="node-frequency" children="Wie oft?" />
-                  <Input
-                    id="node-frequency"
-                    value={nodeData.frequency || ""}
-                    onChange={(event) => onUpdate({ frequency: event.target.value })}
-                    className="h-12 rounded-2xl"
-                    placeholder="z. B. oft"
-                  />
-                </div>
-
-                <div>
-                  <FieldLabel htmlFor="node-impact" children="Folge" />
-                  <Input
-                    id="node-impact"
-                    value={nodeData.impact || ""}
-                    onChange={(event) => onUpdate({ impact: event.target.value })}
-                    className="h-12 rounded-2xl"
-                    placeholder="z. B. Wartezeit"
-                  />
-                </div>
-              </Section>
-            )}
-
-            {showCurrentExtras && nodeData.nodeType === "system" && (
-              <Section>
-                <div>
-                  <FieldLabel htmlFor="node-system-type" children="Art" />
-                  <Input
-                    id="node-system-type"
-                    value={nodeData.systemType || ""}
-                    onChange={(event) => onUpdate({ systemType: event.target.value })}
-                    className="h-12 rounded-2xl"
-                    placeholder="z. B. CRM"
-                  />
-                </div>
-
-                <div>
-                  <FieldLabel htmlFor="node-connected-to" children="Verbunden mit" />
-                  <Input
-                    id="node-connected-to"
-                    value={nodeData.connectedTo || ""}
-                    onChange={(event) => onUpdate({ connectedTo: event.target.value })}
-                    className="h-12 rounded-2xl"
-                    placeholder="z. B. E-Mail"
-                  />
-                </div>
-              </Section>
-            )}
-          </>
-        )}
-
-        {stage === "future" && (
-          <>
-            <Section>
-              <FieldLabel children="Was ändert sich?" />
-              <div className="grid gap-2">
-                {(Object.keys(FUTURE_MODE_CONFIG) as FutureMode[]).map((mode) => {
-                  const option = FUTURE_MODE_CONFIG[mode];
-                  const active = futureMode === mode;
-
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => onUpdate({ futureMode: mode })}
-                      className={cn(
-                        "rounded-2xl border px-4 py-4 text-left transition-all",
-                        active
-                          ? "border-primary bg-primary/5 shadow-sm"
-                          : "border-border/70 bg-white hover:border-border",
-                      )}
-                      title={option.description}
-                    >
-                      <p className="font-medium text-foreground">{option.label}</p>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{option.description}</p>
-                    </button>
-                  );
-                })}
+                </Field>
               </div>
+
+              <Field label="Tools" hint="Wo passiert das?">
+                <TagEditor
+                  tools={nodeData.tools || []}
+                  onChange={(tools) => onUpdate({ tools })}
+                />
+              </Field>
             </Section>
 
-            {futureMode === "same" && (
-              <Section>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Hier musst du nichts mehr eintragen.
-                </p>
-              </Section>
-            )}
-
-            {futureMode !== "same" && (
-              <>
-                <Section>
+            <Section className="border-node-bottleneck/30 bg-node-bottleneck-bg/40">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-node-bottleneck" />
                   <div>
-                    <FieldLabel
-                      htmlFor="future-description"
-                      children="Was ist neu?"
-                      hint="Nur die Änderung beschreiben."
-                    />
-                    <Textarea
-                      id="future-description"
-                      value={nodeData.futureDescription || ""}
-                      onChange={(event) => onUpdate({ futureDescription: event.target.value })}
-                      className="min-h-[110px] rounded-2xl"
-                      placeholder="Was läuft später anders?"
-                    />
+                    <p className="text-sm font-medium text-foreground">Hier hakt es</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Markiere diesen Schritt als Engstelle.
+                    </p>
                   </div>
-
-                  <div>
-                    <FieldLabel htmlFor="future-ai-task" children="KI macht" />
-                    <Textarea
-                      id="future-ai-task"
-                      value={nodeData.aiTask || ""}
-                      onChange={(event) => onUpdate({ aiTask: event.target.value })}
-                      className="min-h-[96px] rounded-2xl"
-                      placeholder="Was übernimmt die KI?"
-                    />
-                  </div>
-
-                  <div>
-                    <FieldLabel htmlFor="future-human-role" children="Mensch macht" />
-                    <Textarea
-                      id="future-human-role"
-                      value={nodeData.humanRole || ""}
-                      onChange={(event) => onUpdate({ humanRole: event.target.value })}
-                      className="min-h-[96px] rounded-2xl"
-                      placeholder="Was bleibt beim Menschen?"
-                    />
-                  </div>
-                </Section>
-
-                <TogglePanelButton
-                  open={showFutureExtras}
-                  closedLabel="Technische Angaben"
-                  openLabel="Technische Angaben ausblenden"
-                  onClick={() => setShowFutureExtras((value) => !value)}
+                </div>
+                <Switch
+                  checked={nodeData.isBottleneck || false}
+                  onCheckedChange={(checked) => onUpdate({ isBottleneck: checked })}
                 />
+              </div>
 
-                {showFutureExtras && (
-                  <Section>
-                    <div>
-                      <FieldLabel
-                        htmlFor="future-label"
-                        children="Name in der KI-Version"
-                        hint="Kann leer bleiben, wenn der Name gleich ist."
-                      />
-                      <Input
-                        id="future-label"
-                        value={nodeData.futureLabel || ""}
-                        onChange={(event) => onUpdate({ futureLabel: event.target.value })}
-                        className="h-12 rounded-2xl"
-                        placeholder={nodeData.label}
-                      />
-                    </div>
-
-                    <div>
-                      <FieldLabel htmlFor="future-ai-input" children="KI braucht" />
-                      <Input
-                        id="future-ai-input"
-                        value={nodeData.aiInput || ""}
-                        onChange={(event) => onUpdate({ aiInput: event.target.value })}
-                        className="h-12 rounded-2xl"
-                        placeholder="z. B. Anfrage, Daten, Dokumente"
-                      />
-                    </div>
-
-                    <div>
-                      <FieldLabel htmlFor="future-ai-output" children="KI liefert" />
-                      <Input
-                        id="future-ai-output"
-                        value={nodeData.aiOutput || ""}
-                        onChange={(event) => onUpdate({ aiOutput: event.target.value })}
-                        className="h-12 rounded-2xl"
-                        placeholder="z. B. Entwurf oder Prüfung"
-                      />
-                    </div>
-
-                    <div>
-                      <FieldLabel
-                        htmlFor="future-tech-details"
-                        children="Technik"
-                        hint="Hier darf es technischer sein."
-                      />
-                      <Textarea
-                        id="future-tech-details"
-                        value={nodeData.techDetails || ""}
-                        onChange={(event) => onUpdate({ techDetails: event.target.value })}
-                        className="min-h-[110px] rounded-2xl"
-                        placeholder="z. B. CRM-Anbindung, Freigabe, Schnittstelle"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between rounded-2xl border border-border/70 bg-white px-4 py-3">
-                      <div>
-                        <p className="font-medium text-foreground">Mensch prüft am Schluss</p>
-                        <p className="text-sm text-muted-foreground">
-                          Aktivieren, wenn eine Freigabe bleibt.
-                        </p>
-                      </div>
-                      <Switch
-                        checked={nodeData.reviewCheckpoint || false}
-                        onCheckedChange={(checked) => onUpdate({ reviewCheckpoint: checked })}
-                      />
-                    </div>
-                  </Section>
-                )}
-              </>
-            )}
+              {nodeData.isBottleneck && (
+                <Input
+                  value={nodeData.bottleneckReason || ""}
+                  onChange={(e) => onUpdate({ bottleneckReason: e.target.value })}
+                  className="h-10 rounded-xl text-sm"
+                  placeholder="Was ist das Problem?"
+                />
+              )}
+            </Section>
           </>
         )}
 
+        {phase === "ai" && (
+          <>
+            <Section>
+              <Field label="Was soll hier passieren?">
+                <div className="space-y-2">
+                  {(Object.keys(FUTURE_MODE_CONFIG) as FutureMode[]).map((mode) => {
+                    const opt = FUTURE_MODE_CONFIG[mode];
+                    const active = futureMode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => onUpdate({ futureMode: mode })}
+                        className={cn(
+                          "flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-all",
+                          active
+                            ? "border-primary bg-primary/8 shadow-sm"
+                            : "border-border/70 bg-white hover:bg-muted/20",
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                            active
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-white",
+                          )}
+                        >
+                          {active && <span className="h-2 w-2 rounded-full bg-white" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                          <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                            {opt.description}
+                          </p>
+                        </div>
+                        {mode !== "same" && (
+                          <Sparkles className="h-3.5 w-3.5 shrink-0 text-node-ai" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            </Section>
+
+            {futureMode !== "same" && (
+              <Section>
+                <Field label="KI übernimmt">
+                  <Textarea
+                    value={nodeData.aiTask || ""}
+                    onChange={(e) => onUpdate({ aiTask: e.target.value })}
+                    className="min-h-[72px] rounded-xl text-sm"
+                    placeholder="Was macht die KI hier?"
+                  />
+                </Field>
+                <Field label="Mensch macht">
+                  <Textarea
+                    value={nodeData.humanRole || ""}
+                    onChange={(e) => onUpdate({ humanRole: e.target.value })}
+                    className="min-h-[60px] rounded-xl text-sm"
+                    placeholder="Was bleibt beim Menschen?"
+                  />
+                </Field>
+
+                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-white px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Mensch prüft am Schluss</p>
+                    <p className="text-[11px] text-muted-foreground">Freigabe bleibt beim Menschen.</p>
+                  </div>
+                  <Switch
+                    checked={nodeData.reviewCheckpoint || false}
+                    onCheckedChange={(checked) => onUpdate({ reviewCheckpoint: checked })}
+                  />
+                </div>
+              </Section>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 border-t border-border/60 bg-white/95 p-3">
         <Button
           variant="ghost"
-          className="h-12 w-full rounded-2xl text-destructive hover:bg-destructive/10 hover:text-destructive"
+          size="sm"
+          className="h-10 rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={onDelete}
+          title="Diesen Schritt löschen"
         >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Löschen
+          <Trash2 className="h-4 w-4" />
         </Button>
+        {onAdvance && (
+          <Button size="sm" className="ml-auto h-10 rounded-xl px-4" onClick={onAdvance}>
+            Weiter
+          </Button>
+        )}
       </div>
     </aside>
   );

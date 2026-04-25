@@ -1,55 +1,53 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, FileText, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { ProcessTemplate } from "@/data/processTemplates";
+import type { StoredWorkflow } from "@/hooks/useWorkflowStorage";
 import type { ProcessNodeData } from "@/types/process";
+import { cn } from "@/lib/utils";
 
 interface OnboardingProps {
   templates: ProcessTemplate[];
+  storedWorkflow?: StoredWorkflow | null;
   onComplete: (processName: string, firstStep: string) => void;
   onLoadTemplate: (templateId: string) => void;
+  onResume?: () => void;
   onBack?: () => void;
 }
 
-const INTRO_STEPS = [
+const FLOW_STEPS = [
   {
-    number: "1",
-    title: "Ziel des Tools",
-    text: "Der Workflow Builder hilft dir dabei, einen bestehenden Ablauf klar zu erfassen und eine mögliche KI-Version sichtbar zu machen.",
+    icon: FileText,
+    title: "Skizzieren",
+    text: "Zeichne den Ablauf Schritt für Schritt.",
   },
   {
-    number: "2",
-    title: "Heutigen Ablauf aufnehmen",
-    text: "Starte immer mit dem aktuellen Prozess. Ein Schritt pro Karte reicht, damit der Ablauf schnell verständlich wird.",
+    icon: Eye,
+    title: "Verfeinern",
+    text: "Kurz beschreiben, wer wann was macht.",
   },
   {
-    number: "3",
-    title: "Änderungen mit KI markieren",
-    text: "Im zweiten Schritt markierst du nur die Stellen, an denen KI unterstützen oder einzelne Aufgaben neu übernehmen soll.",
-  },
-  {
-    number: "4",
-    title: "Vorher und Nachher vergleichen",
-    text: "In der Vergleichsansicht siehst du den heutigen Ablauf und die KI-Version direkt nebeneinander.",
-  },
-  {
-    number: "5",
-    title: "So startest du",
-    text: "Du kannst mit einer Vorlage beginnen oder deinen Prozess leer aufbauen. Alle Inhalte lassen sich später anpassen.",
+    icon: Sparkles,
+    title: "KI prüfen",
+    text: "Pro Schritt entscheiden: bleibt, hilft, neu.",
   },
 ];
 
-const Onboarding = ({ templates, onComplete, onLoadTemplate, onBack }: OnboardingProps) => {
+const Onboarding = ({
+  templates,
+  storedWorkflow,
+  onComplete,
+  onLoadTemplate,
+  onResume,
+  onBack,
+}: OnboardingProps) => {
   const [processName, setProcessName] = useState("");
   const [firstStep, setFirstStep] = useState("");
-  const [introStepIndex, setIntroStepIndex] = useState(0);
 
   const canStart = processName.trim() && firstStep.trim();
-  const currentIntroStep = INTRO_STEPS[introStepIndex];
-  const isLastIntroStep = introStepIndex === INTRO_STEPS.length - 1;
 
   const templateStats = useMemo(
     () =>
@@ -63,102 +61,11 @@ const Onboarding = ({ templates, onComplete, onLoadTemplate, onBack }: Onboardin
     [templates],
   );
 
-  if (currentIntroStep) {
-    return (
-      <div className="min-h-screen bg-white">
-        <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-6 py-12">
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Zur Übersicht
-            </button>
-          )}
-
-          <div className="mx-auto my-auto w-full max-w-2xl">
-            <Card className="rounded-[32px] border-border/70 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.05)]">
-              <CardContent className="space-y-8 p-8 md:p-10">
-                <div className="space-y-3">
-                  <p className="text-sm uppercase tracking-[0.24em] text-muted-foreground">
-                    Workflow Builder
-                  </p>
-                  <div className="flex items-center gap-2">
-                    {INTRO_STEPS.map((step, index) => (
-                      <span
-                        key={step.number}
-                        className={
-                          index === introStepIndex
-                            ? "h-2.5 w-10 rounded-full bg-primary"
-                            : "h-2.5 w-2.5 rounded-full bg-muted"
-                        }
-                      />
-                    ))}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Schritt {introStepIndex + 1} von {INTRO_STEPS.length}
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted text-base font-semibold text-foreground">
-                    {currentIntroStep.number}
-                  </div>
-                  <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-                    {currentIntroStep.title}
-                  </h1>
-                  <p className="max-w-xl text-lg leading-8 text-muted-foreground">
-                    {currentIntroStep.text}
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm text-muted-foreground">
-                    Kurz erklärt. Danach kannst du direkt mit dem Aufbau beginnen.
-                  </div>
-
-                  <div className="flex gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="lg"
-                      className="h-12 rounded-2xl px-6"
-                      disabled={introStepIndex === 0}
-                      onClick={() => setIntroStepIndex((current) => Math.max(0, current - 1))}
-                    >
-                      Zurück
-                    </Button>
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="h-12 rounded-2xl px-6"
-                      onClick={() => {
-                        if (isLastIntroStep) {
-                          setIntroStepIndex(INTRO_STEPS.length);
-                          return;
-                        }
-
-                        setIntroStepIndex((current) => current + 1);
-                      }}
-                    >
-                      {isLastIntroStep ? "Zum Builder" : "Weiter"}
-                      <ArrowRight className="h-5 w-5" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const hasResume = Boolean(storedWorkflow && storedWorkflow.nodes.length > 0);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_hsl(var(--node-process-bg)),_white_42%),linear-gradient(180deg,white,white)]">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-12 px-6 py-12">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_hsl(var(--node-process-bg)),_white_45%),linear-gradient(180deg,white,#fafbfd)]">
+      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 py-10">
         {onBack && (
           <button
             type="button"
@@ -170,145 +77,180 @@ const Onboarding = ({ templates, onComplete, onLoadTemplate, onBack }: Onboardin
           </button>
         )}
 
-        <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
-          <div className="space-y-8">
-            <div className="inline-flex items-center gap-2 rounded-full border border-node-process/20 bg-white px-4 py-2 text-sm text-muted-foreground shadow-sm">
-              <Sparkles className="h-4 w-4 text-node-process" />
-              Erst heute. Dann mit KI.
-            </div>
-
+        <div className="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
+          {/* Left: pitch + 3 phase preview */}
+          <div className="flex flex-col gap-8">
             <div className="space-y-5">
-              <h1 className="max-w-3xl text-4xl font-semibold leading-tight text-foreground md:text-6xl">
-                Starte mit einer guten Vorlage oder ganz leer.
+              <div className="inline-flex items-center gap-2 rounded-full border border-node-process/25 bg-white/80 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
+                <Sparkles className="h-3.5 w-3.5 text-node-process" />
+                Workflow Builder
+              </div>
+              <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl">
+                Mal' deinen Prozess.
+                <br />
+                <span className="text-muted-foreground">Sieh, wo KI hilft.</span>
               </h1>
-              <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground">
-                Wähle eine Vorlage oder lege deinen eigenen Ablauf an.
+              <p className="max-w-md text-base leading-7 text-muted-foreground">
+                In drei Phasen: zuerst skizzieren, dann verfeinern, dann KI durchdenken.
+                Du wirst Schritt für Schritt geführt — auch ohne Vorwissen.
               </p>
             </div>
 
-            <div className="rounded-[28px] border border-border/70 bg-white/90 p-6 shadow-sm">
-              <p className="text-sm uppercase tracking-[0.24em] text-muted-foreground">
-                Kurz zur Logik
-              </p>
-              <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
-                <p>1. Zeige zuerst den Ablauf von heute.</p>
-                <p>2. Markiere danach nur die KI-Änderungen.</p>
-                <p>3. Vergleiche am Ende beide Wege direkt.</p>
-              </div>
+            <div className="grid gap-3">
+              {FLOW_STEPS.map((step, index) => {
+                const Icon = step.icon;
+                return (
+                  <div
+                    key={step.title}
+                    className={cn(
+                      "flex items-start gap-3 rounded-2xl border border-border/60 bg-white/80 p-3.5 shadow-sm transition-all hover:bg-white",
+                      "animate-fade-in",
+                    )}
+                    style={{ animationDelay: `${index * 80}ms` }}
+                  >
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          {index + 1}
+                        </span>
+                        <p className="text-sm font-semibold text-foreground">{step.title}</p>
+                      </div>
+                      <p className="text-[13px] leading-5 text-muted-foreground">{step.text}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+
+            {hasResume && storedWorkflow && (
+              <button
+                type="button"
+                onClick={onResume}
+                className="group flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 text-left transition-all hover:bg-primary/10"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">
+                    Letzten Stand fortsetzen
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {storedWorkflow.processName || "Unbenannt"} ·{" "}
+                    {storedWorkflow.nodes.length} Schritte
+                  </p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </button>
+            )}
           </div>
 
-          <Card className="rounded-[32px] border-white/80 bg-white/95 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-            <CardContent className="space-y-6 p-8">
-              <div className="space-y-2">
-                <p className="text-sm uppercase tracking-[0.24em] text-muted-foreground">
+          {/* Right: start options */}
+          <Card className="rounded-[28px] border border-white/80 bg-white/95 p-7 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+            <div className="space-y-6">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
                   Vorlagen
                 </p>
-                <h2 className="text-2xl font-semibold text-foreground">
-                  Wähle einen Startpunkt.
+                <h2 className="mt-1 text-xl font-semibold text-foreground">
+                  Mit einem Beispiel starten
                 </h2>
               </div>
 
-              <div className="grid gap-3">
+              <div className="grid gap-2">
                 {templates.map((template) => {
                   const stats = templateStats.find((entry) => entry.id === template.id);
-
                   return (
                     <button
                       key={template.id}
                       type="button"
                       onClick={() => onLoadTemplate(template.id)}
-                      className="rounded-[28px] border border-border/70 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-md"
+                      className="group flex items-start justify-between gap-3 rounded-2xl border border-border/60 bg-white p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-md"
                     >
-                      <div className="flex flex-wrap items-center gap-2">
-                        {template.tools.map((tool) => (
-                          <span
-                            key={tool}
-                            className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
-                          >
-                            {tool}
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <p className="text-sm font-semibold text-foreground">{template.title}</p>
+                        <p className="text-[12px] leading-5 text-muted-foreground line-clamp-2">
+                          {template.summary}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                            {stats?.steps ?? template.nodes.length} Schritte
                           </span>
-                        ))}
-                      </div>
-
-                      <div className="mt-4 flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-xl font-semibold text-foreground">{template.title}</p>
-                          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                            {template.summary}
-                          </p>
+                          {(stats?.changed ?? 0) > 0 && (
+                            <span className="rounded-full bg-node-ai-bg px-2 py-0.5 text-[10px] text-node-ai">
+                              {stats?.changed} mit KI
+                            </span>
+                          )}
+                          {template.tools.slice(0, 2).map((tool) => (
+                            <span
+                              key={tool}
+                              className="rounded-full bg-node-system-bg px-2 py-0.5 text-[10px] text-node-system"
+                            >
+                              {tool}
+                            </span>
+                          ))}
                         </div>
-                        <ArrowRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                       </div>
-
-                      <div className="mt-4 flex flex-wrap gap-2 text-sm">
-                        <span className="rounded-full bg-muted px-3 py-1 text-muted-foreground">
-                          {stats?.steps ?? template.nodes.length} Schritte
-                        </span>
-                        <span className="rounded-full bg-node-ai-bg px-3 py-1 text-node-ai">
-                          {stats?.changed ?? 0} mit KI anders
-                        </span>
-                      </div>
+                      <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
                     </button>
                   );
                 })}
               </div>
 
-              <div className="rounded-[28px] border border-border/70 bg-[#fafbfc] p-5">
-                <div className="space-y-2">
-                  <p className="text-sm uppercase tracking-[0.24em] text-muted-foreground">
-                    Oder leer starten
-                  </p>
-                  <h3 className="text-xl font-semibold text-foreground">
-                    Eigener Prozess
-                  </h3>
-                </div>
+              <div className="relative">
+                <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border/60" />
+                <p className="relative mx-auto w-fit bg-white px-3 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+                  oder leer beginnen
+                </p>
+              </div>
 
-                <div className="mt-4 space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="process-name">
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-[12px] font-medium text-foreground" htmlFor="process-name">
                       Prozessname
                     </label>
                     <Input
                       id="process-name"
                       value={processName}
-                      onChange={(event) => setProcessName(event.target.value)}
-                      className="h-14 rounded-2xl border-border/80 px-5 text-lg"
+                      onChange={(e) => setProcessName(e.target.value)}
+                      className="h-11 rounded-xl"
                       placeholder="z. B. Reklamation"
-                      autoFocus
                     />
                   </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="first-step">
+                  <div className="space-y-1.5">
+                    <label className="text-[12px] font-medium text-foreground" htmlFor="first-step">
                       Erster Schritt
                     </label>
                     <Input
                       id="first-step"
                       value={firstStep}
-                      onChange={(event) => setFirstStep(event.target.value)}
-                      className="h-14 rounded-2xl border-border/80 px-5 text-lg"
+                      onChange={(e) => setFirstStep(e.target.value)}
+                      className="h-11 rounded-xl"
                       placeholder="z. B. Anfrage kommt an"
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && canStart) {
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && canStart) {
                           onComplete(processName.trim(), firstStep.trim());
                         }
                       }}
                     />
                   </div>
-
-                  <Button
-                    size="lg"
-                    className="h-14 w-full rounded-2xl text-base"
-                    disabled={!canStart}
-                    onClick={() => onComplete(processName.trim(), firstStep.trim())}
-                  >
-                    Leer starten
-                    <ArrowRight className="h-5 w-5" />
-                  </Button>
                 </div>
+
+                <Button
+                  size="lg"
+                  className="h-12 w-full rounded-xl"
+                  disabled={!canStart}
+                  onClick={() => onComplete(processName.trim(), firstStep.trim())}
+                >
+                  Loslegen
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
               </div>
-            </CardContent>
+            </div>
           </Card>
         </div>
       </div>
