@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { AlertTriangle, Plus, Sparkles, Trash2, X } from "lucide-react";
 
+import { useTranslation } from "@/lib/i18n";
 import {
   COMMON_TOOL_SUGGESTIONS,
-  FUTURE_MODE_CONFIG,
-  NODE_TYPE_CONFIG,
+  FUTURE_MODE_STYLE,
+  NODE_TYPE_STYLE,
   type FutureMode,
   type NodeType,
   type ProcessNodeData,
@@ -51,6 +52,7 @@ const TagEditor = ({
   tools: string[];
   onChange: (next: string[]) => void;
 }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState("");
 
   const addTool = (value: string) => {
@@ -92,7 +94,7 @@ const TagEditor = ({
                 addTool(draft);
               }
             }}
-            placeholder="Tool…"
+            placeholder={t("edit.field.tools.placeholder")}
             className="h-7 w-24 border-0 bg-transparent p-0 text-xs shadow-none focus-visible:ring-0"
           />
           {draft && (
@@ -134,24 +136,34 @@ const EditPanel = ({
   position,
   total,
 }: EditPanelProps) => {
-  const config = NODE_TYPE_CONFIG[nodeData.nodeType];
+  const { t } = useTranslation();
+  const style = NODE_TYPE_STYLE[nodeData.nodeType];
   const futureMode = (nodeData.futureMode ?? "same") as FutureMode;
+
+  const subtitleKey =
+    phase === "draft"
+      ? "edit.subtitle.draft"
+      : phase === "refine"
+        ? "edit.subtitle.refine"
+        : phase === "ai"
+          ? "edit.subtitle.ai"
+          : null;
 
   return (
     <aside className="edit-panel flex h-full w-[360px] shrink-0 flex-col overflow-hidden rounded-[24px] border border-border/70 bg-[#fcfcfd] shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
       <div className="flex items-start justify-between gap-3 border-b border-border/60 bg-white/95 p-4 backdrop-blur">
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2">
-            <span className={cn("text-[12px] font-semibold leading-none", config.colorClass)}>
-              {config.emoji}
+            <span className={cn("text-[12px] font-semibold leading-none", style.colorClass)}>
+              {style.emoji}
             </span>
             <span
               className={cn(
                 "text-[10px] font-semibold uppercase tracking-[0.18em]",
-                config.colorClass,
+                style.colorClass,
               )}
             >
-              {config.label}
+              {t(style.labelKey)}
             </span>
             {typeof position === "number" && typeof total === "number" && (
               <span className="ml-auto rounded-full bg-muted px-2 py-[2px] text-[10px] font-medium text-muted-foreground">
@@ -160,23 +172,17 @@ const EditPanel = ({
             )}
           </div>
           <h2 className="text-base font-semibold text-foreground">
-            {phase === "ai" ? "KI-Möglichkeit" : "Schritt bearbeiten"}
+            {phase === "ai" ? t("edit.title.ai") : t("edit.title.refine")}
           </h2>
-          <p className="text-xs leading-5 text-muted-foreground">
-            {phase === "draft"
-              ? "Nur Name. Reihenfolge zählt."
-              : phase === "refine"
-                ? "Wer, was, wie lange."
-                : phase === "ai"
-                  ? "Eine Entscheidung reicht."
-                  : ""}
-          </p>
+          {subtitleKey && (
+            <p className="text-xs leading-5 text-muted-foreground">{t(subtitleKey)}</p>
+          )}
         </div>
 
         <button
           onClick={onClose}
           className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted"
-          title="Schließen"
+          title={t("common.close")}
         >
           <X className="h-4 w-4" />
         </button>
@@ -185,21 +191,21 @@ const EditPanel = ({
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {(phase === "draft" || phase === "refine") && (
           <Section>
-            <Field label="Name">
+            <Field label={t("edit.field.name")}>
               <Input
                 value={nodeData.label}
                 onChange={(e) => onUpdate({ label: e.target.value })}
                 className="h-11 rounded-xl"
-                placeholder="Was passiert hier?"
+                placeholder={t("edit.field.name.placeholder")}
                 autoFocus
               />
             </Field>
 
             {phase === "draft" && (
-              <Field label="Typ">
+              <Field label={t("edit.field.type")}>
                 <div className="grid grid-cols-2 gap-2">
-                  {(Object.keys(NODE_TYPE_CONFIG) as NodeType[]).map((type) => {
-                    const tConfig = NODE_TYPE_CONFIG[type];
+                  {(Object.keys(NODE_TYPE_STYLE) as NodeType[]).map((type) => {
+                    const tStyle = NODE_TYPE_STYLE[type];
                     const active = nodeData.nodeType === type;
                     return (
                       <button
@@ -213,11 +219,11 @@ const EditPanel = ({
                             : "border-border/70 bg-white text-muted-foreground hover:bg-muted/30",
                         )}
                       >
-                        <span className={cn("text-base", tConfig.colorClass)}>{tConfig.emoji}</span>
+                        <span className={cn("text-base", tStyle.colorClass)}>{tStyle.emoji}</span>
                         <div className="min-w-0">
-                          <p className="font-medium text-foreground">{tConfig.label}</p>
+                          <p className="font-medium text-foreground">{t(tStyle.labelKey)}</p>
                           <p className="text-[10px] leading-4 text-muted-foreground">
-                            {tConfig.description}
+                            {t(tStyle.descriptionKey)}
                           </p>
                         </div>
                       </button>
@@ -232,39 +238,39 @@ const EditPanel = ({
         {phase === "refine" && (
           <>
             <Section>
-              <Field label="Kurz erklärt" hint="Ein Satz reicht.">
+              <Field label={t("edit.field.shortDescription")} hint={t("edit.field.shortDescription.hint")}>
                 <Textarea
                   value={nodeData.description || ""}
                   onChange={(e) => onUpdate({ description: e.target.value })}
                   className="min-h-[88px] rounded-xl text-sm"
                   placeholder={
                     nodeData.nodeType === "decision"
-                      ? "Worüber wird entschieden?"
-                      : "Was passiert in diesem Schritt?"
+                      ? t("edit.field.shortDescription.placeholderDecision")
+                      : t("edit.field.shortDescription.placeholderProcess")
                   }
                 />
               </Field>
 
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Wer?">
+                <Field label={t("edit.field.who")}>
                   <Input
                     value={nodeData.responsible || ""}
                     onChange={(e) => onUpdate({ responsible: e.target.value })}
                     className="h-10 rounded-xl text-sm"
-                    placeholder="z. B. Sales"
+                    placeholder={t("edit.field.who.placeholder")}
                   />
                 </Field>
-                <Field label="Dauer">
+                <Field label={t("edit.field.duration")}>
                   <Input
                     value={nodeData.duration || ""}
                     onChange={(e) => onUpdate({ duration: e.target.value })}
                     className="h-10 rounded-xl text-sm"
-                    placeholder="z. B. 30 Min"
+                    placeholder={t("edit.field.duration.placeholder")}
                   />
                 </Field>
               </div>
 
-              <Field label="Tools" hint="Wo passiert das?">
+              <Field label={t("edit.field.tools")} hint={t("edit.field.tools.hint")}>
                 <TagEditor
                   tools={nodeData.tools || []}
                   onChange={(tools) => onUpdate({ tools })}
@@ -277,9 +283,9 @@ const EditPanel = ({
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-node-bottleneck" />
                   <div>
-                    <p className="text-sm font-medium text-foreground">Hier hakt es</p>
+                    <p className="text-sm font-medium text-foreground">{t("edit.bottleneck.title")}</p>
                     <p className="text-[11px] text-muted-foreground">
-                      Markiere diesen Schritt als Engstelle.
+                      {t("edit.bottleneck.body")}
                     </p>
                   </div>
                 </div>
@@ -294,7 +300,7 @@ const EditPanel = ({
                   value={nodeData.bottleneckReason || ""}
                   onChange={(e) => onUpdate({ bottleneckReason: e.target.value })}
                   className="h-10 rounded-xl text-sm"
-                  placeholder="Was ist das Problem?"
+                  placeholder={t("edit.bottleneck.placeholder")}
                 />
               )}
             </Section>
@@ -304,10 +310,10 @@ const EditPanel = ({
         {phase === "ai" && (
           <>
             <Section>
-              <Field label="Was soll hier passieren?">
+              <Field label={t("edit.ai.fieldLabel")}>
                 <div className="space-y-2">
-                  {(Object.keys(FUTURE_MODE_CONFIG) as FutureMode[]).map((mode) => {
-                    const opt = FUTURE_MODE_CONFIG[mode];
+                  {(Object.keys(FUTURE_MODE_STYLE) as FutureMode[]).map((mode) => {
+                    const opt = FUTURE_MODE_STYLE[mode];
                     const active = futureMode === mode;
                     return (
                       <button
@@ -332,9 +338,9 @@ const EditPanel = ({
                           {active && <span className="h-2 w-2 rounded-full bg-white" />}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                          <p className="text-sm font-medium text-foreground">{t(opt.labelKey)}</p>
                           <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                            {opt.description}
+                            {t(opt.descriptionKey)}
                           </p>
                         </div>
                         {mode !== "same" && (
@@ -349,27 +355,27 @@ const EditPanel = ({
 
             {futureMode !== "same" && (
               <Section>
-                <Field label="KI übernimmt">
+                <Field label={t("edit.ai.task")}>
                   <Textarea
                     value={nodeData.aiTask || ""}
                     onChange={(e) => onUpdate({ aiTask: e.target.value })}
                     className="min-h-[72px] rounded-xl text-sm"
-                    placeholder="Was macht die KI hier?"
+                    placeholder={t("edit.ai.task.placeholder")}
                   />
                 </Field>
-                <Field label="Mensch macht">
+                <Field label={t("edit.ai.human")}>
                   <Textarea
                     value={nodeData.humanRole || ""}
                     onChange={(e) => onUpdate({ humanRole: e.target.value })}
                     className="min-h-[60px] rounded-xl text-sm"
-                    placeholder="Was bleibt beim Menschen?"
+                    placeholder={t("edit.ai.human.placeholder")}
                   />
                 </Field>
 
                 <div className="flex items-center justify-between rounded-xl border border-border/70 bg-white px-3 py-2.5">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Mensch prüft am Schluss</p>
-                    <p className="text-[11px] text-muted-foreground">Freigabe bleibt beim Menschen.</p>
+                    <p className="text-sm font-medium text-foreground">{t("edit.ai.review.title")}</p>
+                    <p className="text-[11px] text-muted-foreground">{t("edit.ai.review.body")}</p>
                   </div>
                   <Switch
                     checked={nodeData.reviewCheckpoint || false}
@@ -388,13 +394,13 @@ const EditPanel = ({
           size="sm"
           className="h-10 rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={onDelete}
-          title="Diesen Schritt löschen"
+          title={t("edit.delete.title")}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
         {onAdvance && (
           <Button size="sm" className="ml-auto h-10 rounded-xl px-4" onClick={onAdvance}>
-            Weiter
+            {t("common.next")}
           </Button>
         )}
       </div>

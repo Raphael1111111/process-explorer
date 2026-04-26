@@ -1,19 +1,21 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Edge, Node } from "@xyflow/react";
 
+import LanguageToggle from "@/components/process/LanguageToggle";
 import Onboarding from "@/components/process/Onboarding";
 import ProcessCanvas from "@/components/process/ProcessCanvas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { PROCESS_TEMPLATES, type ProcessTemplate } from "@/data/processTemplates";
+import { getProcessTemplates, type ProcessTemplate } from "@/data/processTemplates";
 import {
   clearWorkflow,
   loadWorkflow,
   type StoredWorkflow,
 } from "@/hooks/useWorkflowStorage";
+import { LocaleProvider, useTranslation } from "@/lib/i18n";
 import type { ProcessNodeData, WorkflowPhase } from "@/types/process";
 
 const cloneNodes = (nodes: Node[]) =>
@@ -39,13 +41,16 @@ interface CanvasProps {
   phase: WorkflowPhase;
 }
 
-const Builder = () => {
+const BuilderInner = () => {
   const navigate = useNavigate();
+  const { t, locale } = useTranslation();
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [hasAccess, setHasAccess] = useState(false);
   const [canvasProps, setCanvasProps] = useState<CanvasProps | null>(null);
   const [storedWorkflow, setStoredWorkflow] = useState<StoredWorkflow | null>(null);
+
+  const templates = useMemo(() => getProcessTemplates(locale), [locale]);
 
   useEffect(() => {
     if (hasAccess && !canvasProps) {
@@ -60,7 +65,7 @@ const Builder = () => {
       setPasswordError("");
       return;
     }
-    setPasswordError("Das Passwort ist nicht korrekt.");
+    setPasswordError(t("password.error"));
   };
 
   const handleStart = (processName: string, firstStep: string) => {
@@ -84,7 +89,7 @@ const Builder = () => {
   };
 
   const handleLoadTemplate = (templateId: string) => {
-    const template = PROCESS_TEMPLATES.find((entry) => entry.id === templateId);
+    const template = templates.find((entry) => entry.id === templateId);
     if (!template) return;
     clearWorkflow();
     setCanvasProps(cloneTemplate(template));
@@ -104,13 +109,16 @@ const Builder = () => {
     return (
       <div className="min-h-screen bg-white">
         <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-6 py-12">
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Zur Übersicht
-          </button>
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {t("password.back")}
+            </button>
+            <LanguageToggle />
+          </div>
 
           <div className="mx-auto my-auto w-full max-w-xl">
             <Card className="rounded-[32px] border-border/70 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.05)]">
@@ -121,13 +129,13 @@ const Builder = () => {
                   </div>
                   <div className="space-y-3">
                     <p className="text-sm uppercase tracking-[0.24em] text-muted-foreground">
-                      Workflow Builder
+                      {t("password.kicker")}
                     </p>
                     <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-                      Zugang zum Workflow Builder
+                      {t("password.title")}
                     </h1>
                     <p className="text-lg leading-8 text-muted-foreground">
-                      Bitte gib das Passwort ein, um den Workflow Builder zu öffnen.
+                      {t("password.subtitle")}
                     </p>
                   </div>
                 </div>
@@ -135,7 +143,7 @@ const Builder = () => {
                 <form onSubmit={handlePasswordSubmit} className="space-y-5">
                   <div className="space-y-2">
                     <label htmlFor="builder-password" className="text-sm font-medium text-foreground">
-                      Passwort
+                      {t("password.label")}
                     </label>
                     <Input
                       id="builder-password"
@@ -146,18 +154,18 @@ const Builder = () => {
                         if (passwordError) setPasswordError("");
                       }}
                       className="h-14 rounded-2xl border-border/80 px-5 text-lg"
-                      placeholder="Passwort eingeben"
+                      placeholder={t("password.placeholder")}
                       autoFocus
                     />
                   </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm text-muted-foreground" aria-live="polite">
-                      {passwordError || "Bitte gib das Passwort ein, um fortzufahren."}
+                      {passwordError || t("password.hint")}
                     </p>
 
                     <Button type="submit" size="lg" className="h-14 rounded-2xl px-8">
-                      Weiter
+                      {t("password.submit")}
                       <ArrowRight className="h-5 w-5" />
                     </Button>
                   </div>
@@ -173,7 +181,7 @@ const Builder = () => {
   if (!canvasProps) {
     return (
       <Onboarding
-        templates={PROCESS_TEMPLATES}
+        templates={templates}
         storedWorkflow={storedWorkflow}
         onComplete={handleStart}
         onLoadTemplate={handleLoadTemplate}
@@ -192,5 +200,11 @@ const Builder = () => {
     />
   );
 };
+
+const Builder = () => (
+  <LocaleProvider>
+    <BuilderInner />
+  </LocaleProvider>
+);
 
 export default Builder;

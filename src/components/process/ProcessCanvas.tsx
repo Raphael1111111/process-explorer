@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   Background,
@@ -24,25 +25,28 @@ import {
   type OnConnect,
   type OnEdgesChange,
   type OnNodesChange,
-  type ReactFlowInstance,
 } from "@xyflow/react";
 import { ArrowRightLeft, Cpu, Eye, Maximize2, RotateCcw, Sparkles } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 
 import CarouselControls from "./CarouselControls";
 import EditPanel from "./EditPanel";
+import ExportMenu from "./ExportMenu";
 import FlowEdge from "./FlowEdge";
+import LanguageToggle from "./LanguageToggle";
+import NodeContextMenu from "./NodeContextMenu";
 import NodePalette from "./NodePalette";
+import PdfPreview from "./PdfPreview";
 import PhaseStepper from "./PhaseStepper";
 import ProcessNode from "./ProcessNode";
 import { Button } from "@/components/ui/button";
 import { useWorkflowAutoSave } from "@/hooks/useWorkflowStorage";
+import { useTranslation } from "@/lib/i18n";
 import { DEFAULT_LAYOUT, layoutNodes, snapToGrid } from "@/lib/layout";
 import { cn } from "@/lib/utils";
 import {
+  PHASE_META,
   PHASE_ORDER,
-  WORKFLOW_PHASES,
-  type FutureMode,
   type NodeType,
   type ProcessNodeData,
   type WorkflowPhase,
@@ -61,12 +65,19 @@ interface ProcessCanvasProps {
   initialPhase?: WorkflowPhase;
 }
 
+interface ContextMenuState {
+  x: number;
+  y: number;
+  nodeId: string;
+}
+
 const ProcessCanvasInner = ({
   initialProcessName,
   initialNodes,
   initialEdges,
   initialPhase,
 }: ProcessCanvasProps) => {
+  const { t } = useTranslation();
   const reactFlow = useReactFlow();
   const [processName, setProcessName] = useState(initialProcessName);
   const [phase, setPhase] = useState<WorkflowPhase>(initialPhase ?? "draft");
@@ -76,42 +87,34 @@ const ProcessCanvasInner = ({
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [compareView, setCompareView] = useState<"current" | "future">("current");
   const [hydrated, setHydrated] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [pdfOpen, setPdfOpen] = useState(false);
   const nodeCounter = useRef(initialNodes.length + 1);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // hydrate flag — for autosave
   useEffect(() => {
     const t = window.setTimeout(() => setHydrated(true), 200);
     return () => window.clearTimeout(t);
   }, []);
 
-  // persist
   const storageData = useMemo(
     () => ({ processName, phase, nodes, edges }),
     [processName, phase, nodes, edges],
   );
   useWorkflowAutoSave({ enabled: hydrated, data: storageData });
 
-  // ordered list for carousel
   const orderedNodes = useMemo(() => {
-    const incoming = new Map<string, number>();
-    nodes.forEach((n) => incoming.set(n.id, 0));
-    edges.forEach((e) => {
-      if (incoming.has(e.target)) incoming.set(e.target, (incoming.get(e.target) ?? 0) + 1);
-    });
     return [...nodes].sort((a, b) => {
       if (a.position.x !== b.position.x) return a.position.x - b.position.x;
       return a.position.y - b.position.y;
     });
-  }, [nodes, edges]);
+  }, [nodes]);
 
-  // active node in carousel mode
   const carouselActiveId = orderedNodes[carouselIndex]?.id ?? null;
   const isCarousel = phase === "refine" || phase === "ai";
   const activeNodeId = isCarousel ? carouselActiveId : selectedNodeId;
   const activeNode = nodes.find((n) => n.id === activeNodeId);
 
-  // focus state per node — for animation halo
   const focusedNodes = useMemo(() => {
     const map = new Map<string, "focus" | "neighbor" | "background" | "neutral">();
     if (!isCarousel || !carouselActiveId) {
@@ -128,7 +131,6 @@ const ProcessCanvasInner = ({
     return map;
   }, [isCarousel, carouselActiveId, orderedNodes, nodes, selectedNodeId]);
 
-  // decorate nodes with viewMode + focusState + bottleneck visualization
   const displayNodes = useMemo(() => {
     const isCompareFuture = phase === "compare" && compareView === "future";
     const viewMode = phase === "ai" || isCompareFuture ? "future" : "current";
@@ -149,7 +151,6 @@ const ProcessCanvasInner = ({
     });
   }, [nodes, phase, compareView, focusedNodes, activeNodeId]);
 
-  // dim non-active edges in carousel view
   const displayEdges = useMemo(() => {
     return edges.map((edge) => {
       const dimmed =
@@ -166,7 +167,6 @@ const ProcessCanvasInner = ({
     });
   }, [edges, isCarousel, carouselActiveId]);
 
-  // ---- node ops ----
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => {
       setNodes((existing) => {
@@ -211,7 +211,18 @@ const ProcessCanvasInner = ({
 
   const onPaneClick = useCallback(() => {
     if (!isCarousel) setSelectedNodeId(null);
+    setContextMenu(null);
   }, [isCarousel]);
+
+  const onNodeContextMenu = useCallback(
+    (event: ReactMouseEvent, node: Node) => {
+      event.preventDefault();
+      if (phase === "compare") return;
+      setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
+      if (!isCarousel) setSelectedNodeId(node.id);
+    },
+    [isCarousel, phase],
+  );
 
   const createNode = useCallback(
     (type: NodeType, position: { x: number; y: number }, label?: string): Node => {
@@ -221,14 +232,15 @@ const ProcessCanvasInner = ({
         type: "processNode",
         position: { x: snapToGrid(position.x), y: snapToGrid(position.y) },
         data: {
-          label: label ?? (type === "decision" ? "Neue Frage" : "Neuer Schritt"),
+          label:
+            label ?? (type === "decision" ? t("palette.newDecision") : t("palette.newProcess")),
           nodeType: type,
           futureMode: "same",
           isFresh: true,
         } as ProcessNodeData,
       };
     },
-    [],
+    [t],
   );
 
   const addNodeFromPalette = useCallback(
@@ -284,6 +296,67 @@ const ProcessCanvasInner = ({
     [createNode, edges, nodes, reactFlow],
   );
 
+  const duplicateNode = useCallback(
+    (sourceId: string) => {
+      const source = nodes.find((n) => n.id === sourceId);
+      if (!source) return;
+      const id = `node-${nodeCounter.current++}`;
+      const cloned: Node = {
+        ...source,
+        id,
+        position: {
+          x: snapToGrid(source.position.x + 40),
+          y: snapToGrid(source.position.y + 40),
+        },
+        data: { ...(source.data as ProcessNodeData), isFresh: true },
+        selected: false,
+      };
+      setNodes((existing) => [...existing, cloned]);
+      setSelectedNodeId(id);
+      window.setTimeout(() => {
+        setNodes((existing) =>
+          existing.map((n) => (n.id === id ? { ...n, data: { ...n.data, isFresh: false } } : n)),
+        );
+      }, 1600);
+    },
+    [nodes],
+  );
+
+  const toggleBottleneck = useCallback((targetId: string) => {
+    setNodes((existing) =>
+      existing.map((n) =>
+        n.id === targetId
+          ? { ...n, data: { ...n.data, isBottleneck: !(n.data as ProcessNodeData).isBottleneck } }
+          : n,
+      ),
+    );
+  }, []);
+
+  const cycleNodeType = useCallback((targetId: string) => {
+    setNodes((existing) =>
+      existing.map((n) => {
+        if (n.id !== targetId) return n;
+        const current = (n.data as ProcessNodeData).nodeType;
+        const next: NodeType = current === "process" ? "decision" : "process";
+        return { ...n, data: { ...n.data, nodeType: next } };
+      }),
+    );
+  }, []);
+
+  const deleteNode = useCallback(
+    (targetId: string) => {
+      setNodes((existing) => existing.filter((n) => n.id !== targetId));
+      setEdges((existing) =>
+        existing.filter((e) => e.source !== targetId && e.target !== targetId),
+      );
+      if (isCarousel) {
+        setCarouselIndex((idx) => Math.max(0, Math.min(idx, orderedNodes.length - 2)));
+      }
+      if (selectedNodeId === targetId) setSelectedNodeId(null);
+    },
+    [isCarousel, orderedNodes.length, selectedNodeId],
+  );
+
   const onDrop = useCallback(
     (event: ReactDragEvent) => {
       event.preventDefault();
@@ -331,18 +404,11 @@ const ProcessCanvasInner = ({
 
   const deleteActive = useCallback(() => {
     if (!activeNodeId) return;
-    setNodes((existing) => existing.filter((n) => n.id !== activeNodeId));
-    setEdges((existing) =>
-      existing.filter((e) => e.source !== activeNodeId && e.target !== activeNodeId),
-    );
-    if (isCarousel) {
-      setCarouselIndex((idx) => Math.max(0, Math.min(idx, orderedNodes.length - 2)));
-    }
-    setSelectedNodeId(null);
-  }, [activeNodeId, isCarousel, orderedNodes.length]);
+    deleteNode(activeNodeId);
+  }, [activeNodeId, deleteNode]);
 
   const resetAll = useCallback(() => {
-    if (window.confirm("Alles zurücksetzen? Dein aktueller Ablauf geht verloren.")) {
+    if (window.confirm(t("reset.confirm"))) {
       setNodes([]);
       setEdges([]);
       setSelectedNodeId(null);
@@ -350,7 +416,7 @@ const ProcessCanvasInner = ({
       setCarouselIndex(0);
       nodeCounter.current = 1;
     }
-  }, []);
+  }, [t]);
 
   const autoArrange = useCallback(() => {
     if (nodes.length === 0) return;
@@ -360,7 +426,6 @@ const ProcessCanvasInner = ({
     });
   }, [edges, nodes, reactFlow]);
 
-  // Camera follow in carousel mode
   useEffect(() => {
     if (!isCarousel || !carouselActiveId) return;
     const node = nodes.find((n) => n.id === carouselActiveId);
@@ -372,11 +437,11 @@ const ProcessCanvasInner = ({
     );
   }, [carouselActiveId, isCarousel, nodes, reactFlow]);
 
-  // Phase change side-effects
   const switchPhase = useCallback(
     (next: WorkflowPhase) => {
       setPhase(next);
       setSelectedNodeId(null);
+      setContextMenu(null);
       if (next === "refine" || next === "ai") {
         setCarouselIndex(0);
       } else {
@@ -388,7 +453,6 @@ const ProcessCanvasInner = ({
     [reactFlow],
   );
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -426,51 +490,50 @@ const ProcessCanvasInner = ({
     return () => window.removeEventListener("keydown", handler);
   }, [deleteActive, insertAfter, isCarousel, orderedNodes.length, phase, selectedNodeId]);
 
-  // counts
   const changedCount = nodes.filter(
     (n) => ((n.data as ProcessNodeData).futureMode ?? "same") !== "same",
   ).length;
   const bottleneckCount = nodes.filter((n) => (n.data as ProcessNodeData).isBottleneck).length;
-  const phaseConfig = WORKFLOW_PHASES[phase];
+  const phaseMeta = PHASE_META[phase];
 
-  // disable phases beyond draft until at least 1 node
   const disabledPhases = nodes.length === 0 ? PHASE_ORDER.filter((p) => p !== "draft") : [];
 
   const carouselPosition = isCarousel
     ? orderedNodes.findIndex((n) => n.id === activeNodeId)
     : undefined;
 
+  const contextNode = contextMenu ? nodes.find((n) => n.id === contextMenu.nodeId) : undefined;
+
   return (
     <div className="flex h-screen flex-col bg-[#f5f6fa]">
-      {/* Header */}
       <header className="border-b border-border/60 bg-white/95 backdrop-blur">
         <div className="mx-auto w-full max-w-[1760px] px-4 py-3 md:px-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                Workflow
+                {t("header.workflow")}
               </p>
               <input
                 value={processName}
                 onChange={(e) => setProcessName(e.target.value)}
                 className="mt-0.5 w-full max-w-2xl border-0 bg-transparent p-0 text-2xl font-semibold tracking-tight text-foreground outline-none placeholder:text-muted-foreground md:text-[28px]"
-                placeholder="Name des Prozesses"
+                placeholder={t("header.processName.placeholder")}
               />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <div className="rounded-full bg-muted px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
-                {nodes.length} Schritte
+                {t("header.steps", { count: nodes.length })}
               </div>
               {bottleneckCount > 0 && (
                 <div className="rounded-full bg-node-bottleneck-bg px-3 py-1.5 text-[11px] font-medium text-node-bottleneck">
-                  {bottleneckCount} Engstellen
+                  {t("header.bottlenecks", { count: bottleneckCount })}
                 </div>
               )}
               {changedCount > 0 && (
                 <div className="rounded-full bg-node-ai-bg px-3 py-1.5 text-[11px] font-medium text-node-ai">
                   <Sparkles className="mr-1 inline h-3 w-3" />
-                  {changedCount} mit KI
+                  {t("header.aiCount", { count: changedCount })}
                 </div>
               )}
               {phase === "draft" && nodes.length > 1 && (
@@ -479,18 +542,25 @@ const ProcessCanvasInner = ({
                   size="sm"
                   className="h-9 rounded-full px-3 text-xs"
                   onClick={autoArrange}
-                  title="Automatisch ordnen"
+                  title={t("header.arrange.title")}
                 >
                   <Maximize2 className="mr-1 h-3.5 w-3.5" />
-                  Ordnen
+                  {t("header.arrange")}
                 </Button>
               )}
+              <ExportMenu
+                processName={processName}
+                nodes={nodes}
+                edges={edges}
+                onPdf={() => setPdfOpen(true)}
+              />
+              <LanguageToggle />
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-9 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground"
                 onClick={resetAll}
-                title="Alles zurücksetzen"
+                title={t("header.reset.title")}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
               </Button>
@@ -500,15 +570,14 @@ const ProcessCanvasInner = ({
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <PhaseStepper current={phase} onChange={switchPhase} disabledPhases={disabledPhases} />
             <p className="text-[12px] text-muted-foreground">
-              <span className="font-medium text-foreground">{phaseConfig.headline}</span>
+              <span className="font-medium text-foreground">{t(phaseMeta.headlineKey)}</span>
               {" — "}
-              {phaseConfig.description}
+              {t(phaseMeta.descriptionKey)}
             </p>
           </div>
         </div>
       </header>
 
-      {/* Main canvas area */}
       <main className="relative min-h-0 flex-1">
         <div
           ref={wrapperRef}
@@ -518,7 +587,6 @@ const ProcessCanvasInner = ({
         >
           {phase === "draft" && <NodePalette onAddNode={addNodeFromPalette} />}
 
-          {/* Compare toggle */}
           {phase === "compare" && (
             <div className="pointer-events-auto absolute left-1/2 top-4 z-10 -translate-x-1/2">
               <div className="flex items-center gap-1 rounded-full border border-border/70 bg-white/95 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
@@ -532,7 +600,7 @@ const ProcessCanvasInner = ({
                   )}
                 >
                   <Eye className="h-3.5 w-3.5" />
-                  Vorher
+                  {t("canvas.compare.before")}
                 </button>
                 <ArrowRightLeft className="h-3 w-3 text-muted-foreground/60" />
                 <button
@@ -545,31 +613,28 @@ const ProcessCanvasInner = ({
                   )}
                 >
                   <Cpu className="h-3.5 w-3.5" />
-                  Mit KI
+                  {t("canvas.compare.after")}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Empty state */}
           {nodes.length === 0 && phase === "draft" && (
             <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center">
               <div className="max-w-md rounded-3xl border border-dashed border-border bg-white/80 px-8 py-10 text-center backdrop-blur">
                 <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                  Leerer Canvas
+                  {t("canvas.empty.kicker")}
                 </p>
                 <h2 className="mt-3 text-2xl font-semibold text-foreground">
-                  Beginne mit dem ersten Schritt.
+                  {t("canvas.empty.title")}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Ziehe ein Element aus der Palette links oder klicke darauf.
-                  Mit <span className="font-mono text-foreground">Enter</span> fügst du Folgeschritte ein.
+                  {t("canvas.empty.body")}
                 </p>
               </div>
             </div>
           )}
 
-          {/* "+ Schritt danach" floating button next to selected node in draft mode */}
           {phase === "draft" && selectedNodeId && (() => {
             const node = nodes.find((n) => n.id === selectedNodeId);
             if (!node) return null;
@@ -588,10 +653,10 @@ const ProcessCanvasInner = ({
                   left: screen.x - bounds.left,
                   top: screen.y - bounds.top,
                 }}
-                title="Folgeschritt einfügen (Enter)"
+                title={t("canvas.insertAfter.title")}
               >
                 <span className="text-base leading-none">+</span>
-                Schritt danach
+                {t("canvas.insertAfter")}
               </button>
             );
           })()}
@@ -609,6 +674,7 @@ const ProcessCanvasInner = ({
               onEdgesChange={phase === "draft" ? onEdgesChange : undefined}
               onConnect={phase === "draft" ? onConnect : undefined}
               onNodeClick={phase !== "compare" ? onNodeClick : undefined}
+              onNodeContextMenu={phase !== "compare" ? onNodeContextMenu : undefined}
               onPaneClick={onPaneClick}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
@@ -637,7 +703,6 @@ const ProcessCanvasInner = ({
             </ReactFlow>
           </div>
 
-          {/* Carousel controls — bottom center */}
           {isCarousel && orderedNodes.length > 0 && (
             <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center px-4">
               <CarouselControls
@@ -646,14 +711,15 @@ const ProcessCanvasInner = ({
                 onPrev={() => setCarouselIndex((i) => Math.max(0, i - 1))}
                 onNext={() => setCarouselIndex((i) => Math.min(orderedNodes.length - 1, i + 1))}
                 onFinish={() => switchPhase(phase === "refine" ? "ai" : "compare")}
-                hint={phase === "refine" ? "Pfeiltasten ← →" : "Pfeiltasten ← →"}
-                finishLabel={phase === "refine" ? "Weiter zur KI" : "Vergleich ansehen"}
+                hint={t("carousel.hint")}
+                finishLabel={
+                  phase === "refine" ? t("carousel.finish.refine") : t("carousel.finish.ai")
+                }
               />
             </div>
           )}
         </div>
 
-        {/* Edit panel */}
         {(phase === "draft" || phase === "refine" || phase === "ai") && activeNode && (
           <div
             className={cn(
@@ -667,7 +733,6 @@ const ProcessCanvasInner = ({
               onUpdate={updateNodeData}
               onClose={() => {
                 if (isCarousel) {
-                  // can't close in carousel — advance instead
                   setCarouselIndex((i) => Math.min(orderedNodes.length - 1, i + 1));
                 } else {
                   setSelectedNodeId(null);
@@ -691,35 +756,56 @@ const ProcessCanvasInner = ({
           </div>
         )}
 
-        {/* Compare summary panel */}
         {phase === "compare" && (
           <div className="pointer-events-auto absolute bottom-6 right-6 z-10 flex max-w-sm flex-col gap-2 rounded-2xl border border-border/70 bg-white/95 p-4 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur">
             <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Übersicht
+              {t("canvas.summary.title")}
             </p>
             <div className="flex items-center gap-3 text-sm">
               <span className="font-semibold text-foreground">{nodes.length}</span>
-              <span className="text-muted-foreground">Schritte gesamt</span>
+              <span className="text-muted-foreground">{t("canvas.summary.totalSteps")}</span>
             </div>
             <div className="flex items-center gap-3 text-sm">
               <span className="font-semibold text-node-ai">{changedCount}</span>
-              <span className="text-muted-foreground">davon mit KI verändert</span>
+              <span className="text-muted-foreground">{t("canvas.summary.changedAi")}</span>
             </div>
             {bottleneckCount > 0 && (
               <div className="flex items-center gap-3 text-sm">
                 <span className="font-semibold text-node-bottleneck">{bottleneckCount}</span>
-                <span className="text-muted-foreground">markierte Engstellen</span>
+                <span className="text-muted-foreground">{t("canvas.summary.bottlenecks")}</span>
               </div>
             )}
             {nodes.length > 0 && (
               <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                Wechsle oben zwischen <span className="font-medium text-foreground">Vorher</span> und{" "}
-                <span className="font-medium text-node-ai">Mit KI</span>, um den Unterschied zu sehen.
+                {t("canvas.summary.toggleHint")}
               </p>
             )}
           </div>
         )}
       </main>
+
+      {contextMenu && contextNode && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          nodeData={contextNode.data as ProcessNodeData}
+          onClose={() => setContextMenu(null)}
+          onInsertAfter={() => insertAfter(contextMenu.nodeId, "process")}
+          onDuplicate={() => duplicateNode(contextMenu.nodeId)}
+          onToggleBottleneck={() => toggleBottleneck(contextMenu.nodeId)}
+          onCycleType={() => cycleNodeType(contextMenu.nodeId)}
+          onDelete={() => deleteNode(contextMenu.nodeId)}
+        />
+      )}
+
+      {pdfOpen && (
+        <PdfPreview
+          processName={processName}
+          nodes={nodes}
+          edges={edges}
+          onClose={() => setPdfOpen(false)}
+        />
+      )}
     </div>
   );
 };

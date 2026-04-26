@@ -270,3 +270,21 @@
 .react-flow.dragging .react-flow__viewport {
   transition: none;
 }
+
+/* Print styles for PDF export */
+@media print {
+  body.pdf-preview-open > #root {
+    display: none !important;
+  }
+  body.pdf-preview-open #pdf-preview-root {
+    position: static !important;
+    background: white !important;
+  }
+  body.pdf-preview-open {
+    background: white !important;
+  }
+  @page {
+    margin: 1.5cm;
+    size: A4;
+  }
+}
