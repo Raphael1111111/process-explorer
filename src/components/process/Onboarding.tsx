@@ -55,7 +55,7 @@ const Onboarding = ({
   const hasResume = Boolean(storedWorkflow && storedWorkflow.nodes.length > 0);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_hsl(var(--node-process-bg)),_white_45%),linear-gradient(180deg,white,#fafbfd)]">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#eef5f7,_white_45%),linear-gradient(180deg,white,#fafbfd)]">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 py-10">
         <div className="flex items-center justify-between gap-3">
           {onBack ? (
@@ -76,8 +76,8 @@ const Onboarding = ({
         <div className="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
           <div className="flex flex-col gap-8">
             <div className="space-y-5">
-              <div className="inline-flex items-center gap-2 rounded-full border border-node-process/25 bg-white/80 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
-                <Sparkles className="h-3.5 w-3.5 text-node-process" />
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-white/80 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
                 {t("onboarding.badge")}
               </div>
               <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl">
