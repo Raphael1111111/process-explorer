@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Eye, FileText, Sparkles } from "lucide-react";
 
+import LanguageToggle from "./LanguageToggle";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { ProcessTemplate } from "@/data/processTemplates";
 import type { StoredWorkflow } from "@/hooks/useWorkflowStorage";
+import { useTranslation } from "@/lib/i18n";
 import type { ProcessNodeData } from "@/types/process";
 import { cn } from "@/lib/utils";
 
@@ -18,24 +20,6 @@ interface OnboardingProps {
   onBack?: () => void;
 }
 
-const FLOW_STEPS = [
-  {
-    icon: FileText,
-    title: "Skizzieren",
-    text: "Zeichne den Ablauf Schritt für Schritt.",
-  },
-  {
-    icon: Eye,
-    title: "Verfeinern",
-    text: "Kurz beschreiben, wer wann was macht.",
-  },
-  {
-    icon: Sparkles,
-    title: "KI prüfen",
-    text: "Pro Schritt entscheiden: bleibt, hilft, neu.",
-  },
-];
-
 const Onboarding = ({
   templates,
   storedWorkflow,
@@ -44,10 +28,17 @@ const Onboarding = ({
   onResume,
   onBack,
 }: OnboardingProps) => {
+  const { t } = useTranslation();
   const [processName, setProcessName] = useState("");
   const [firstStep, setFirstStep] = useState("");
 
   const canStart = processName.trim() && firstStep.trim();
+
+  const FLOW_STEPS = [
+    { icon: FileText, title: t("onboarding.phase1.title"), text: t("onboarding.phase1.body") },
+    { icon: Eye, title: t("onboarding.phase2.title"), text: t("onboarding.phase2.body") },
+    { icon: Sparkles, title: t("onboarding.phase3.title"), text: t("onboarding.phase3.body") },
+  ];
 
   const templateStats = useMemo(
     () =>
@@ -66,33 +57,36 @@ const Onboarding = ({
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_hsl(var(--node-process-bg)),_white_45%),linear-gradient(180deg,white,#fafbfd)]">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 py-10">
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Zur Übersicht
-          </button>
-        )}
+        <div className="flex items-center justify-between gap-3">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {t("onboarding.back")}
+            </button>
+          ) : (
+            <span />
+          )}
+          <LanguageToggle />
+        </div>
 
         <div className="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
-          {/* Left: pitch + 3 phase preview */}
           <div className="flex flex-col gap-8">
             <div className="space-y-5">
               <div className="inline-flex items-center gap-2 rounded-full border border-node-process/25 bg-white/80 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
                 <Sparkles className="h-3.5 w-3.5 text-node-process" />
-                Workflow Builder
+                {t("onboarding.badge")}
               </div>
               <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl">
-                Mal' deinen Prozess.
+                {t("onboarding.title.line1")}
                 <br />
-                <span className="text-muted-foreground">Sieh, wo KI hilft.</span>
+                <span className="text-muted-foreground">{t("onboarding.title.line2")}</span>
               </h1>
               <p className="max-w-md text-base leading-7 text-muted-foreground">
-                In drei Phasen: zuerst skizzieren, dann verfeinern, dann KI durchdenken.
-                Du wirst Schritt für Schritt geführt — auch ohne Vorwissen.
+                {t("onboarding.subtitle")}
               </p>
             </div>
 
@@ -136,11 +130,13 @@ const Onboarding = ({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-foreground">
-                    Letzten Stand fortsetzen
+                    {t("onboarding.resume.title")}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {storedWorkflow.processName || "Unbenannt"} ·{" "}
-                    {storedWorkflow.nodes.length} Schritte
+                    {t("onboarding.resume.subtitle", {
+                      name: storedWorkflow.processName || t("onboarding.resume.unnamed"),
+                      count: storedWorkflow.nodes.length,
+                    })}
                   </p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
@@ -148,15 +144,14 @@ const Onboarding = ({
             )}
           </div>
 
-          {/* Right: start options */}
           <Card className="rounded-[28px] border border-white/80 bg-white/95 p-7 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
             <div className="space-y-6">
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                  Vorlagen
+                  {t("onboarding.templates.kicker")}
                 </p>
                 <h2 className="mt-1 text-xl font-semibold text-foreground">
-                  Mit einem Beispiel starten
+                  {t("onboarding.templates.title")}
                 </h2>
               </div>
 
@@ -177,11 +172,13 @@ const Onboarding = ({
                         </p>
                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                           <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                            {stats?.steps ?? template.nodes.length} Schritte
+                            {t("onboarding.templates.steps", {
+                              count: stats?.steps ?? template.nodes.length,
+                            })}
                           </span>
                           {(stats?.changed ?? 0) > 0 && (
                             <span className="rounded-full bg-node-ai-bg px-2 py-0.5 text-[10px] text-node-ai">
-                              {stats?.changed} mit KI
+                              {t("onboarding.templates.aiSteps", { count: stats?.changed ?? 0 })}
                             </span>
                           )}
                           {template.tools.slice(0, 2).map((tool) => (
@@ -203,7 +200,7 @@ const Onboarding = ({
               <div className="relative">
                 <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border/60" />
                 <p className="relative mx-auto w-fit bg-white px-3 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                  oder leer beginnen
+                  {t("onboarding.divider")}
                 </p>
               </div>
 
@@ -211,26 +208,26 @@ const Onboarding = ({
                 <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
                   <div className="space-y-1.5">
                     <label className="text-[12px] font-medium text-foreground" htmlFor="process-name">
-                      Prozessname
+                      {t("onboarding.field.name")}
                     </label>
                     <Input
                       id="process-name"
                       value={processName}
                       onChange={(e) => setProcessName(e.target.value)}
                       className="h-11 rounded-xl"
-                      placeholder="z. B. Reklamation"
+                      placeholder={t("onboarding.field.name.placeholder")}
                     />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[12px] font-medium text-foreground" htmlFor="first-step">
-                      Erster Schritt
+                      {t("onboarding.field.firstStep")}
                     </label>
                     <Input
                       id="first-step"
                       value={firstStep}
                       onChange={(e) => setFirstStep(e.target.value)}
                       className="h-11 rounded-xl"
-                      placeholder="z. B. Anfrage kommt an"
+                      placeholder={t("onboarding.field.firstStep.placeholder")}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && canStart) {
                           onComplete(processName.trim(), firstStep.trim());
@@ -246,7 +243,7 @@ const Onboarding = ({
                   disabled={!canStart}
                   onClick={() => onComplete(processName.trim(), firstStep.trim())}
                 >
-                  Loslegen
+                  {t("common.start")}
                   <ArrowRight className="ml-1 h-4 w-4" />
                 </Button>
               </div>

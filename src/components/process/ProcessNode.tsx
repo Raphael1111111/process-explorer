@@ -2,9 +2,10 @@ import { memo } from "react";
 import { Handle, Position, useStore, type NodeProps } from "@xyflow/react";
 import { AlertTriangle, Sparkles } from "lucide-react";
 
+import { useTranslation } from "@/lib/i18n";
 import {
-  FUTURE_MODE_CONFIG,
-  NODE_TYPE_CONFIG,
+  FUTURE_MODE_STYLE,
+  NODE_TYPE_STYLE,
   type CanvasView,
   type FutureMode,
   type NodeType,
@@ -21,11 +22,12 @@ type ViewNodeData = ProcessNodeData & {
 };
 
 const ProcessNode = memo(({ data, selected }: NodeProps) => {
+  const { t } = useTranslation();
   const nodeData = data as ViewNodeData;
-  const config = NODE_TYPE_CONFIG[nodeData.nodeType as NodeType] ?? NODE_TYPE_CONFIG.process;
+  const style = NODE_TYPE_STYLE[nodeData.nodeType as NodeType] ?? NODE_TYPE_STYLE.process;
   const viewMode = nodeData.viewMode ?? "current";
   const futureMode = (nodeData.futureMode ?? "same") as FutureMode;
-  const futureConfig = FUTURE_MODE_CONFIG[futureMode];
+  const futureStyle = FUTURE_MODE_STYLE[futureMode];
   const isFutureView = viewMode === "future";
   const isChanged = futureMode !== "same";
   const focusState: FocusState = nodeData.focusState ?? "neutral";
@@ -53,9 +55,9 @@ const ProcessNode = memo(({ data, selected }: NodeProps) => {
     <div
       className={cn(
         "process-node relative min-w-[200px] max-w-[240px] rounded-[20px] border bg-white px-4 py-3 shadow-[0_6px_18px_rgba(15,23,42,0.05)] transition-all duration-300 ease-out",
-        config.borderClass,
-        config.bgClass,
-        isFutureView && isChanged && futureConfig.cardClass,
+        style.borderClass,
+        style.bgClass,
+        isFutureView && isChanged && futureStyle.cardClass,
         selected && "ring-2 ring-primary/30 shadow-[0_14px_32px_rgba(37,99,235,0.14)]",
         nodeData.isFresh && "process-node-fresh",
         focusClasses[focusState],
@@ -71,24 +73,24 @@ const ProcessNode = memo(({ data, selected }: NodeProps) => {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-1.5">
-            <span className={cn("text-[11px] font-semibold leading-none", config.colorClass)}>
-              {config.emoji}
+            <span className={cn("text-[11px] font-semibold leading-none", style.colorClass)}>
+              {style.emoji}
             </span>
             <span
               className={cn(
                 "text-[10px] font-semibold uppercase tracking-[0.18em]",
-                config.colorClass,
+                style.colorClass,
               )}
             >
-              {config.label}
+              {t(style.labelKey)}
             </span>
             {nodeData.isBottleneck && !isFutureView && (
               <span
                 className="ml-1 inline-flex items-center gap-1 rounded-full bg-node-bottleneck-bg px-1.5 py-[2px] text-[9px] font-semibold uppercase tracking-[0.14em] text-node-bottleneck"
-                title={nodeData.bottleneckReason || "Hier hakt es"}
+                title={nodeData.bottleneckReason || t("node.bottleneck.title")}
               >
                 <AlertTriangle className="h-2.5 w-2.5" />
-                Eng
+                {t("node.bottleneckBadge")}
               </span>
             )}
           </div>
@@ -98,7 +100,7 @@ const ProcessNode = memo(({ data, selected }: NodeProps) => {
               detailLevel === "compact" && "text-[13px]",
             )}
           >
-            {String(title || "Ohne Namen")}
+            {String(title || t("common.unnamed"))}
           </p>
         </div>
 
@@ -106,11 +108,11 @@ const ProcessNode = memo(({ data, selected }: NodeProps) => {
           <span
             className={cn(
               "shrink-0 rounded-full px-2 py-1 text-[10px] font-medium",
-              futureConfig.badgeClass,
+              futureStyle.badgeClass,
             )}
           >
             <Sparkles className="mr-1 inline h-2.5 w-2.5" />
-            {futureConfig.shortLabel}
+            {t(futureStyle.shortKey)}
           </span>
         )}
       </div>
@@ -161,7 +163,7 @@ const ProcessNode = memo(({ data, selected }: NodeProps) => {
       {showMeta && isFutureView && isChanged && nodeData.reviewCheckpoint && (
         <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-node-ai">
           <span className="h-1.5 w-1.5 rounded-full bg-node-ai" />
-          Mensch prüft
+          {t("node.humanReview")}
         </div>
       )}
 

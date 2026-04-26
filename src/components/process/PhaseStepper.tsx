@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 
-import { PHASE_ORDER, WORKFLOW_PHASES, type WorkflowPhase } from "@/types/process";
+import { useTranslation } from "@/lib/i18n";
+import { PHASE_META, PHASE_ORDER, type WorkflowPhase } from "@/types/process";
 import { cn } from "@/lib/utils";
 
 interface PhaseStepperProps {
@@ -10,12 +11,13 @@ interface PhaseStepperProps {
 }
 
 const PhaseStepper = ({ current, onChange, disabledPhases = [] }: PhaseStepperProps) => {
+  const { t } = useTranslation();
   const currentIndex = PHASE_ORDER.indexOf(current);
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {PHASE_ORDER.map((phase, index) => {
-        const config = WORKFLOW_PHASES[phase];
+        const meta = PHASE_META[phase];
         const active = phase === current;
         const done = index < currentIndex;
         const disabled = disabledPhases.includes(phase);
@@ -32,7 +34,7 @@ const PhaseStepper = ({ current, onChange, disabledPhases = [] }: PhaseStepperPr
               !active && !disabled && "border-border/70 bg-white text-muted-foreground hover:bg-muted/40",
               disabled && "cursor-not-allowed border-border/40 bg-white/40 text-muted-foreground/50",
             )}
-            title={config.description}
+            title={t(meta.descriptionKey)}
           >
             <span
               className={cn(
@@ -42,9 +44,9 @@ const PhaseStepper = ({ current, onChange, disabledPhases = [] }: PhaseStepperPr
                 !active && !done && "bg-muted text-muted-foreground",
               )}
             >
-              {done ? <Check className="h-3 w-3" /> : config.step}
+              {done ? <Check className="h-3 w-3" /> : meta.step}
             </span>
-            <span className="font-medium">{config.label}</span>
+            <span className="font-medium">{t(meta.labelKey)}</span>
           </button>
         );
       })}

@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface CarouselControlsProps {
@@ -21,9 +22,10 @@ const CarouselControls = ({
   onNext,
   onFinish,
   hint,
-  nextLabel = "Weiter",
-  finishLabel = "Fertig",
+  nextLabel,
+  finishLabel,
 }: CarouselControlsProps) => {
+  const { t } = useTranslation();
   const atStart = index <= 0;
   const atEnd = index >= total - 1;
 
@@ -52,14 +54,14 @@ const CarouselControls = ({
           className="h-10 w-10 rounded-full p-0"
           disabled={atStart}
           onClick={onPrev}
-          title="Zurück"
+          title={t("carousel.prev.title")}
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
 
         <div className="min-w-[120px] text-center">
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-            Schritt {index + 1} / {total}
+            {t("carousel.position", { current: index + 1, total })}
           </p>
           {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
         </div>
@@ -67,11 +69,11 @@ const CarouselControls = ({
         {atEnd ? (
           <Button size="sm" className="h-10 rounded-full px-5" onClick={onFinish}>
             <Check className="mr-1.5 h-4 w-4" />
-            {finishLabel}
+            {finishLabel ?? t("common.finish")}
           </Button>
         ) : (
           <Button size="sm" className="h-10 rounded-full px-5" onClick={onNext}>
-            {nextLabel}
+            {nextLabel ?? t("common.next")}
             <ChevronRight className="ml-1 h-4 w-4" />
           </Button>
         )}
